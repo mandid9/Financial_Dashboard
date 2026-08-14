@@ -24,3 +24,12 @@ CREATE TABLE transactions (
 
 -- Insert default 'Uncategorized' category
 INSERT INTO categories (name, planned_amount) VALUES ('Uncategorized', 0);
+
+-- Table: Push Subscriptions
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  endpoint TEXT NOT NULL UNIQUE,
+  keys JSONB NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+

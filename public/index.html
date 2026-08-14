@@ -445,6 +445,24 @@
 
   <!-- SETTINGS PAGE -->
   <div id="page-settings" class="page">
+    <!-- Push Notifications Panel -->
+    <div class="card" style="margin-bottom:20px; padding:16px; background:linear-gradient(135deg, rgba(138,43,226,0.08), rgba(15,28,63,0.4)); border:1px solid rgba(138,43,226,0.2)">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+        <div style="display:flex; align-items:center; gap:8px">
+          <span style="font-size:18px">🔔</span>
+          <strong>Push Notifications</strong>
+        </div>
+        <span id="push-status-badge" class="badge blue">Checking...</span>
+      </div>
+      <small style="color:var(--text-muted); display:block; margin-bottom:12px; line-height:1.4">
+        Receive native alerts on Android for: budget warnings (&gt;80%), 5+ uncategorized transactions, balance &lt; 10k EGP, and daily days-left countdown.
+      </small>
+      <div class="flex-gap">
+        <button id="btn-toggle-push" class="primary" style="flex:1" onclick="togglePushNotifications()">Enable Notifications</button>
+        <button id="btn-test-push" class="alt" onclick="sendTestPush()" style="display:none">🔔 Test Alert</button>
+      </div>
+    </div>
+
     <button class="primary" style="width:100%; margin-bottom:16px;" onclick="openAddCategoryModal()">+ Add Category</button>
     <div id="settings-category-list">
       <div class="card skeleton skeleton-card"></div>
@@ -1578,8 +1596,144 @@ function carrySelected() {
   toast(`${state.carryItems.length} items marked for carry forward`, 'success');
 }
 
+// --- 9. PUSH NOTIFICATIONS ---
+let pushSubscription = null;
+
+async function initPushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    updatePushUI('unsupported');
+    return;
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      pushSubscription = sub;
+      updatePushUI('subscribed');
+    } else {
+      updatePushUI('unsubscribed');
+    }
+  } catch (e) {
+    console.warn('SW registration failed:', e);
+    updatePushUI('error');
+  }
+}
+
+function updatePushUI(status) {
+  const badge = document.getElementById('push-status-badge');
+  const btnToggle = document.getElementById('btn-toggle-push');
+  const btnTest = document.getElementById('btn-test-push');
+  if (!badge || !btnToggle) return;
+
+  if (status === 'subscribed') {
+    badge.textContent = 'Active ✓';
+    badge.className = 'badge green';
+    btnToggle.textContent = 'Disable Notifications';
+    btnToggle.className = 'alt';
+    if (btnTest) btnTest.style.display = 'inline-flex';
+  } else if (status === 'unsubscribed') {
+    badge.textContent = 'Disabled';
+    badge.className = 'badge';
+    btnToggle.textContent = 'Enable Notifications';
+    btnToggle.className = 'primary';
+    if (btnTest) btnTest.style.display = 'none';
+  } else if (status === 'unsupported') {
+    badge.textContent = 'Not Supported';
+    badge.className = 'badge red';
+    btnToggle.disabled = true;
+    btnToggle.textContent = 'Unsupported in Browser';
+  } else {
+    badge.textContent = 'Permission Needed';
+    badge.className = 'badge yellow';
+  }
+}
+
+async function togglePushNotifications() {
+  if (pushSubscription) {
+    try {
+      await pushSubscription.unsubscribe();
+      await fetch('/api/push/subscribe', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: pushSubscription.endpoint })
+      });
+      pushSubscription = null;
+      updatePushUI('unsubscribed');
+      toast('Notifications disabled', 'info');
+    } catch (e) {
+      toast('Failed to unsubscribe: ' + e.message, 'error');
+    }
+  } else {
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        toast('Notification permission denied', 'error');
+        updatePushUI('unsubscribed');
+        return;
+      }
+
+      toast('Connecting push service...', 'info');
+      const res = await fetch('/api/push/subscribe');
+      const { publicKey } = await res.json();
+      
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub })
+      });
+
+      pushSubscription = sub;
+      updatePushUI('subscribed');
+      toast('🔔 Push notifications enabled!', 'success');
+    } catch (e) {
+      console.error(e);
+      toast('Failed to enable push: ' + e.message, 'error');
+    }
+  }
+}
+
+async function sendTestPush() {
+  try {
+    toast('Sending test alert...', 'info');
+    const res = await fetch('/api/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'test',
+        subscription: pushSubscription
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    toast('Test alert sent! Check your notification bar.', 'success');
+  } catch (e) {
+    toast('Error sending test push: ' + e.message, 'error');
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 // Kickoff
-window.onload = () => loadData();
+window.onload = () => {
+  loadData();
+  initPushNotifications();
+};
 
 </script>
 </body>

@@ -1,5 +1,30 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import webpush from 'web-push';
+
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BPnDeX4aUsrrHasl3PVoX9Cc2jWmbN9Doi1PXThwupBsJOjFWLioEWEmaXcBUAhA3Ezl3aIUFk81rYA8i3jFYXA';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '55Jm7p3LrpUYkB9OYrt6IP9qHS-7wZG0hs_w80TSz7M';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@personalfinance.app';
+
+webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+
+async function notifySubscribers(payload) {
+  try {
+    const { data: subs } = await supabase.from('push_subscriptions').select('*');
+    if (!subs || subs.length === 0) return;
+    for (const s of subs) {
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify(payload));
+      } catch (e) {
+        if (e.statusCode === 410 || e.statusCode === 404) {
+          await supabase.from('push_subscriptions').delete().eq('endpoint', s.endpoint);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Push notify error in webhook:', err);
+  }
+}
 
 export async function POST(req) {
   try {
@@ -60,6 +85,15 @@ async function logExpense(message, time) {
     .select('*', { count: 'exact', head: true })
     .eq('kind', 'outgoing')
     .is('category_id', null);
+
+  if (count && count >= 5) {
+    await notifySubscribers({
+      title: `📋 ${count} Transactions Need Attention`,
+      body: `You have ${count} uncategorized transactions waiting for review. Tap to categorize.`,
+      icon: '/icon.svg',
+      url: '/index.html'
+    });
+  }
 
   return new NextResponse(`Success | Unhandled: ${count}`, { status: 200 });
 }
