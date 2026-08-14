@@ -1,0 +1,139 @@
+import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
+
+export async function POST(req) {
+  try {
+    const body = await req.text();
+    if (!body) return new NextResponse('No message', { status: 400 });
+
+    const now = new Date().toISOString();
+
+    if (/Reversed|Refunded/i.test(body)) return await handleReversal(body, now);
+    if (/IPN transfer sent/i.test(body) || /(Debit|Credit)\s+Card/i.test(body)) return await logExpense(body, now);
+    if (/IPN transfer re(ceived|cieved)/i.test(body)) return await logIncome(body, now, 'IPN Received', '');
+    if (/اضافة راتبك/.test(body)) return await logSalary(body, now);
+
+    return new NextResponse('Ignored: No pattern matched', { status: 200 });
+  } catch (err) {
+    console.error('Webhook Error:', err);
+    return new NextResponse('Error', { status: 500 });
+  }
+}
+
+async function logExpense(message, time) {
+  const amount = parseEgp(message) || 0;
+  const source = detectOutgoingSource(message);
+  const merchant = ((message.match(/@([^,]+),/)||[])[1]||'').trim();
+
+  // Check duplicate (last 10 transactions in 5 mins)
+  const { data: recent } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('kind', 'outgoing')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (recent) {
+    const win = 5 * 60000;
+    const isDup = recent.some(t => {
+      const d = new Date(time) - new Date(t.transaction_date);
+      return Number(t.amount) === Number(amount) && d >= 0 && d <= win;
+    });
+    if (isDup) return new NextResponse('Duplicate ignored', { status: 200 });
+  }
+
+  const { error } = await supabase
+    .from('transactions')
+    .insert([{
+      kind: 'outgoing',
+      amount: amount,
+      source_or_merchant: merchant || source,
+      note: merchant ? '' : null,
+      transaction_date: time
+    }]);
+
+  if (error) throw error;
+
+  // Count unhandled
+  const { count } = await supabase
+    .from('transactions')
+    .select('*', { count: 'exact', head: true })
+    .eq('kind', 'outgoing')
+    .is('category_id', null);
+
+  return new NextResponse(`Success | Unhandled: ${count}`, { status: 200 });
+}
+
+async function logIncome(message, time, type, note) {
+  const amount = parseEgp(message);
+  if (!amount) return new NextResponse('Could not parse amount', { status: 400 });
+
+  const { error } = await supabase
+    .from('transactions')
+    .insert([{
+      kind: 'incoming',
+      amount: amount,
+      source_or_merchant: type,
+      note: note,
+      transaction_date: time
+    }]);
+
+  if (error) throw error;
+  return new NextResponse('Success', { status: 200 });
+}
+
+async function logSalary(message, time) {
+  const match = message.match(/([\d,.]+)\s*EGP/i);
+  if (!match) return new NextResponse('Could not parse salary', { status: 400 });
+  const amount = match[1].replace(/,/g, '');
+  
+  const { error } = await supabase
+    .from('transactions')
+    .insert([{
+      kind: 'incoming',
+      amount: Number(amount),
+      source_or_merchant: 'Bank Transfer — Salary',
+      note: 'Paycheck',
+      transaction_date: time
+    }]);
+
+  if (error) throw error;
+  return new NextResponse('Success', { status: 200 });
+}
+
+async function handleReversal(message, time) {
+  const amount = parseEgp(message);
+  if (!amount) return new NextResponse('Could not parse reversal', { status: 400 });
+
+  // Find exact match
+  const { data: matches } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('kind', 'outgoing')
+    .eq('amount', amount)
+    .order('transaction_date', { ascending: false })
+    .limit(1);
+
+  if (matches && matches.length > 0) {
+    const match = matches[0];
+    const newNote = 'REVERSED' + (match.note ? ' | ' + match.note : '');
+    await supabase
+      .from('transactions')
+      .update({ note: newNote })
+      .eq('id', match.id);
+  }
+
+  return await logIncome(message, time, 'Reversal/Refund', matches && matches.length > 0 ? 'Original matched' : '');
+}
+
+function parseEgp(t) {
+  const match = String(t).match(/EGP\s+([\d,.]+)/i);
+  return match ? Number(match[1].replace(/,/g, '')) : null;
+}
+
+function detectOutgoingSource(message) {
+  if (/IPN transfer sent/i.test(message)) return 'Instapay Transfer';
+  if (/Debit\s+Card/i.test(message)) return 'Debit Card';
+  if (/Credit\s+Card/i.test(message)) return 'Credit Card';
+  return 'Outgoing Expense';
+}
