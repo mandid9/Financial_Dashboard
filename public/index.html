@@ -680,27 +680,27 @@
 
 <!-- Debt Action Choice Modal -->
 <div id="modal-debt-choice" class="modal-backdrop" onclick="closeModal(event, 'modal-debt-choice')">
-  <div class="modal" style="max-width:380px; text-align:center">
+  <div class="modal" style="max-width:360px; text-align:center">
     <div style="font-size:36px; margin-bottom:8px">💳</div>
-    <h2 style="margin-bottom:8px">Debt Transaction</h2>
+    <h2 style="margin-bottom:6px">Debt Transaction</h2>
     <p style="font-size:14px; color:var(--text-secondary); margin-bottom:18px">
-      How should this transaction (<strong id="debt-choice-amount" style="color:var(--text)">EGP 0.00</strong>) be applied?
+      Amount: <strong id="debt-choice-amount" style="color:var(--text); font-size:16px">EGP 0.00</strong>
     </p>
     
     <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px">
-      <button class="primary" style="padding:14px; text-align:left; display:flex; align-items:center; gap:12px" onclick="resolveDebtChoice('paid')">
-        <span style="font-size:22px">💵</span>
+      <button class="primary" style="padding:14px; text-align:left; display:flex; align-items:center; gap:12px" onclick="resolveDebtChoice('increase')">
+        <span style="font-size:24px">📈</span>
         <div>
-          <strong style="display:block; font-size:14px">Paid Debt (Repayment)</strong>
-          <small style="opacity:0.8; font-size:11px">Records actual expense reducing current debt</small>
+          <strong style="display:block; font-size:15px">Planned</strong>
+          <small style="opacity:0.8; font-size:11px">Adding to the total debt amount</small>
         </div>
       </button>
 
-      <button class="alt" style="padding:14px; text-align:left; display:flex; align-items:center; gap:12px; border:1px solid rgba(138,43,226,0.4)" onclick="resolveDebtChoice('increase')">
-        <span style="font-size:22px">📈</span>
+      <button class="alt" style="padding:14px; text-align:left; display:flex; align-items:center; gap:12px; border:1px solid rgba(34,197,94,0.4)" onclick="resolveDebtChoice('paid')">
+        <span style="font-size:24px">💵</span>
         <div>
-          <strong style="display:block; font-size:14px">Increase Debt Target</strong>
-          <small style="opacity:0.8; font-size:11px">Increases planned debt liability by this amount</small>
+          <strong style="display:block; font-size:15px; color:#4ade80">Payed</strong>
+          <small style="opacity:0.8; font-size:11px">Cutting off the debt limit (repayment)</small>
         </div>
       </button>
     </div>
@@ -921,35 +921,35 @@ function renderHome() {
       <div class="amount" style="font-size:16px">${daysText}</div>
     </div>
   `;
-  
-  // Uncategorized
-  const uncatList = state.dashboard.outgoing.filter(t => !t.category || t.category.trim() === '' || t.category === 'Uncategorized');
-  document.getElementById('home-uncat-count').textContent = uncatList.length;
-
-  // Comparison
-  const cycles = state.dashboard.historyCycles;
-  if (cycles && cycles.length > 0) {
-    const lastCycle = cycles[cycles.length - 1];
-    const diff = m.actual - lastCycle.outgoing;
-    const arrow = diff > 0 ? '▲' : '▼';
-    const color = diff > 0 ? 'var(--danger)' : 'var(--success)';
-    document.getElementById('home-month-comparison').innerHTML = `<span style="color:${color}">${arrow} ${fmt(Math.abs(diff))}</span> vs ${fmt(lastCycle.outgoing)} last cycle`;
-  } else {
-    document.getElementById('home-month-comparison').textContent = 'No previous archive found.';
-  }
 
   // Alerts
   const overBudget = state.budget.categories.some(c => c.planned > 0 && c.actual > c.planned);
-  document.getElementById('home-budget-alerts').className = overBudget ? 'budget-alert visible' : 'budget-alert';
+  const alertEl = document.getElementById('home-budget-alerts');
+  if (alertEl) alertEl.className = overBudget ? 'budget-alert visible' : 'budget-alert';
 
   // Chart
   drawChart();
   
+  // Uncategorized / Carried items
+  const uncatList = state.dashboard.outgoing.filter(t => !t.category || t.category.trim() === '' || t.category === 'Uncategorized');
+  const headerEl = document.getElementById('home-attention-header');
   const listEl = document.getElementById('home-uncategorized-list');
-  if (uncatList.length === 0) {
-    listEl.innerHTML = `<div class="card" style="text-align:center; padding:32px 16px; color:var(--text-muted);">All handled ✓</div>`;
+
+  if (c.isNext) {
+    const carriedAll = state.dashboard.outgoing.filter(t => t.is_carried_forward || (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row))));
+    headerEl.innerHTML = `📌 Carried Items for Next Cycle <span class="badge blue">${carriedAll.length}</span>`;
+    if (carriedAll.length === 0) {
+      listEl.innerHTML = `<div class="card" style="text-align:center; padding:24px 16px; color:var(--text-muted); font-size:13px">No transactions marked for next cycle yet.<br>Click 📌 on any transaction in History to carry it over.</div>`;
+    } else {
+      listEl.innerHTML = carriedAll.map(t => generateTxCardHtml(t, 'home')).join('');
+    }
   } else {
-    listEl.innerHTML = uncatList.map(t => generateTxCardHtml(t, 'home')).join('');
+    headerEl.innerHTML = `Needs Attention <span class="badge blue" id="home-uncat-count">${uncatList.length}</span>`;
+    if (uncatList.length === 0) {
+      listEl.innerHTML = `<div class="card" style="text-align:center; padding:32px 16px; color:var(--text-muted);">All handled ✓</div>`;
+    } else {
+      listEl.innerHTML = uncatList.map(t => generateTxCardHtml(t, 'home')).join('');
+    }
   }
 }
 
@@ -1116,6 +1116,29 @@ function renderSummaryReport() {
         </div>
       </div>
     </div>
+
+    <!-- Carried Forward Transactions Breakdown -->
+    ${(() => {
+      const carried = (state.dashboard.outgoing || []).filter(t => t.is_carried_forward || (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row))));
+      const carriedSum = carried.reduce((s, t) => s + t.amount, 0);
+      if (!carried.length) return '';
+      return `
+        <div class="card" style="margin-bottom:16px; padding:12px; background:rgba(99,102,241,0.06); border:1px solid rgba(99,102,241,0.25); border-radius:12px">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+            <strong>📌 Carried Forward Items (${carried.length})</strong>
+            <span style="font-weight:700; color:#818cf8; font-size:14px">${fmt(carriedSum)}</span>
+          </div>
+          <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
+            ${carried.map(t => `
+              <div class="flex-row">
+                <span>${esc(t.source || 'Expense')} <small style="color:var(--text-muted)">(${t.category || 'Uncategorized'})</small></span>
+                <strong>${fmt(t.amount)}</strong>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    })()}
     
     <h3 style="margin-bottom:12px; font-size:14px; color:var(--text-secondary)">📋 Variance Report</h3>
   `;
@@ -1614,9 +1637,11 @@ async function saveTransaction(row, cid) {
   const note = document.getElementById(`note-${cid}`).value;
   
   const tx = (state.dashboard?.outgoing || []).find(t => String(t.row) === String(row));
-  const isDebt = (cat || '').toLowerCase() === 'debt' || (cat || '').toLowerCase().includes('debt');
+  const prevCat = (tx?.category || '').toLowerCase();
+  const wasDebt = prevCat === 'debt' || prevCat.includes('debt');
+  const isNowDebt = (cat || '').toLowerCase() === 'debt' || (cat || '').toLowerCase().includes('debt');
   
-  if (isDebt && tx && tx.amount > 0) {
+  if (isNowDebt && tx && tx.amount > 0) {
     promptDebtChoice(tx.amount, async (choice) => {
       try {
         toast('Saving debt transaction...', 'info');
@@ -1636,6 +1661,22 @@ async function saveTransaction(row, cid) {
         loadData();
       } catch(e) {}
     });
+    return;
+  }
+
+  // If changing away from Debt (e.g. Uncategorized or another category)
+  if (wasDebt && !isNowDebt && tx && tx.amount > 0) {
+    let reduceAmt = 0;
+    if (confirm(`This transaction was in Debt. Would you like to shrink Planned Debt back by ${fmt(tx.amount)}?`)) {
+      reduceAmt = tx.amount;
+    }
+    try {
+      toast('Saving...', 'info');
+      await server('saveCategory', [row, cat, reduceAmt]);
+      await server('saveNote', [row, note]);
+      toast('Saved!' + (reduceAmt > 0 ? ` Planned Debt reduced by ${fmt(reduceAmt)}` : ''), 'success');
+      loadData();
+    } catch(e) {}
     return;
   }
 

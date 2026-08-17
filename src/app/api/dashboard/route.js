@@ -137,8 +137,8 @@ export async function GET(req) {
       const isToday = t.transaction_date.startsWith(todayStr);
 
       let inScope = false;
-      if (isNext) {
-        // For Next Cycle preview, include carried transactions or future dated transactions
+      if (isNext || isCurrent) {
+        // For current and next cycles, include transactions in range or marked as carried forward
         inScope = (tDate >= targetBounds.start && tDate < targetBounds.end) || !!t.is_carried_forward;
       } else {
         inScope = tDate >= targetBounds.start && tDate < targetBounds.end;

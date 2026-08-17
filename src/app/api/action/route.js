@@ -32,8 +32,18 @@ export async function POST(req) {
 
     switch (action) {
       case 'saveCategory': {
-        const [id, catName] = args;
+        const [id, catName, reduceDebtAmount] = args;
         const catId = await getCategoryIdByName(catName);
+
+        if (typeof reduceDebtAmount === 'number' && reduceDebtAmount > 0) {
+          const { data: debtCat } = await supabase.from('categories').select('id, planned_amount').ilike('name', 'debt').maybeSingle();
+          if (debtCat) {
+            const currentPlan = Number(debtCat.planned_amount) || 0;
+            const newPlan = Math.max(0, currentPlan - reduceDebtAmount);
+            await supabase.from('categories').update({ planned_amount: newPlan }).eq('id', debtCat.id);
+          }
+        }
+
         const { error } = await supabase.from('transactions').update({ category_id: catId }).eq('id', id);
         if (error) throw error;
         evaluateAndDispatchTriggers(false).catch(err => console.warn('Push alert error:', err));
