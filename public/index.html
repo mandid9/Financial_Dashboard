@@ -827,7 +827,18 @@ function resetCycle() {
   }
 }
 
-setInterval(() => loadData(true), 60000);
+// Smart Visibility-Aware Polling (Pauses when screen is off / tab hidden, saves battery & network)
+setInterval(() => {
+  if (document.visibilityState === 'visible') {
+    loadData(true);
+  }
+}, 60000);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    loadData(true);
+  }
+});
 
 // --- 3. NAVIGATION ---
 document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -1348,9 +1359,13 @@ function renderHistory() {
   populateCategoryDropdowns();
 }
 
+let searchDebounceTimer = null;
 document.getElementById('history-search').addEventListener('input', (e) => {
-  state.historySearch = e.target.value;
-  renderHistory();
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    state.historySearch = e.target.value;
+    renderHistory();
+  }, 120);
 });
 
 document.querySelectorAll('#history-filters .pill').forEach(pill => {

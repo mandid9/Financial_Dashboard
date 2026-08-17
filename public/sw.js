@@ -1,12 +1,65 @@
-// Service Worker for Push Notifications
+// Service Worker: Push Notifications + Stale-While-Revalidate Static Asset Caching
+const CACHE_NAME = 'expenses-pwa-v2';
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+  '/icon.svg',
+  '/manifest.json'
+];
+
+// Install: Cache static app shell
 self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS);
+    })
+  );
   self.skipWaiting();
 });
 
+// Activate: Cleanup older caches
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
+  );
 });
 
+// Fetch: Stale-While-Revalidate for static assets, Network-only for /api/
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+
+  // Bypass APIs
+  if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Stale-While-Revalidate for static shell assets
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return networkResponse;
+      }).catch(() => cachedResponse);
+
+      return cachedResponse || fetchPromise;
+    })
+  );
+});
+
+// Push Notifications
 self.addEventListener('push', (event) => {
   let data = {
     title: 'Expenses & Finance',
@@ -47,6 +100,7 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// Notification Click Handler
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 

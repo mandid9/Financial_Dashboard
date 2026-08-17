@@ -4,8 +4,21 @@ import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
 
 export async function POST(req) {
   try {
+    // 1. Optional Secret Verification (MacroDroid compatible)
+    const expectedSecret = process.env.WEBHOOK_SECRET;
+    if (expectedSecret) {
+      const url = new URL(req.url);
+      const querySecret = url.searchParams.get('secret');
+      const headerSecret = req.headers.get('x-webhook-secret') || req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+      if (querySecret !== expectedSecret && headerSecret !== expectedSecret) {
+        return new NextResponse('Unauthorized', { status: 401 });
+      }
+    }
+
+    // 2. Read and bound body payload
     const body = await req.text();
-    if (!body) return new NextResponse('No message', { status: 400 });
+    if (!body || body.trim() === '') return new NextResponse('No message', { status: 400 });
+    if (body.length > 4096) return new NextResponse('Payload too large', { status: 413 });
 
     const now = new Date().toISOString();
 

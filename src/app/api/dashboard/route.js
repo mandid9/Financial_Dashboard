@@ -52,14 +52,14 @@ export async function GET(req) {
     // 2. Fetch Categories
     const { data: categories, error: catError } = await supabase
       .from('categories')
-      .select('*')
+      .select('id, name, planned_amount, sort_order')
       .order('sort_order', { ascending: true });
     if (catError) throw catError;
 
-    // 3. Fetch All Transactions
+    // 3. Fetch Transactions
     const { data: allTransactions, error: txError } = await supabase
       .from('transactions')
-      .select('*, categories(name)')
+      .select('id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id, categories(name)')
       .order('transaction_date', { ascending: false });
     if (txError) throw txError;
 
@@ -311,6 +311,10 @@ export async function GET(req) {
           days: daysLeft
         },
         categories: returnCategories
+      }
+    }, {
+      headers: {
+        'Cache-Control': 'private, no-cache, no-store, must-revalidate'
       }
     });
 

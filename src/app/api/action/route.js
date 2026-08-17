@@ -26,9 +26,28 @@ async function getCategoryIdByName(rawName) {
   return null;
 }
 
+function sanitizeStr(val, maxLen = 500) {
+  if (val === null || val === undefined) return '';
+  return String(val).trim().slice(0, maxLen);
+}
+
+function parseValidAmount(val) {
+  const num = Number(val);
+  if (isNaN(num) || !isFinite(num) || num < 0 || num > 100000000) return null;
+  return Math.round(num * 100) / 100;
+}
+
 export async function POST(req) {
   try {
-    const { action, args } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+
+    const { action, args } = body;
+    if (!action || !Array.isArray(args)) {
+      return NextResponse.json({ error: 'Action and args array are required' }, { status: 400 });
+    }
 
     switch (action) {
       case 'saveCategory': {
@@ -53,14 +72,16 @@ export async function POST(req) {
       case 'saveNote':
       case 'saveIncomeNote': {
         const [id, note] = args;
-        const { error } = await supabase.from('transactions').update({ note }).eq('id', id);
+        const cleanNote = sanitizeStr(note, 500);
+        const { error } = await supabase.from('transactions').update({ note: cleanNote }).eq('id', id);
         if (error) throw error;
         return NextResponse.json({ success: true });
       }
 
       case 'saveIncomeSource': {
         const [id, src] = args;
-        const { error } = await supabase.from('transactions').update({ source_or_merchant: src }).eq('id', id);
+        const cleanSrc = sanitizeStr(src, 200);
+        const { error } = await supabase.from('transactions').update({ source_or_merchant: cleanSrc }).eq('id', id);
         if (error) throw error;
         return NextResponse.json({ success: true });
       }
@@ -80,14 +101,18 @@ export async function POST(req) {
       }
 
       case 'addManualExpense': {
-        const [amount, catName, note, merchant, isCarried] = args;
+        const [rawAmount, catName, note, merchant, isCarried] = args;
+        const amount = parseValidAmount(rawAmount);
+        if (amount === null || amount <= 0) {
+          return NextResponse.json({ error: 'Valid positive amount is required' }, { status: 400 });
+        }
         const catId = await getCategoryIdByName(catName);
         const { error } = await supabase.from('transactions').insert([{
           kind: 'outgoing',
           amount,
           category_id: catId,
-          note: note || '',
-          source_or_merchant: merchant,
+          note: sanitizeStr(note, 500),
+          source_or_merchant: sanitizeStr(merchant, 200) || 'Manual Expense',
           is_carried_forward: !!isCarried,
           transaction_date: new Date().toISOString()
         }]);
@@ -97,12 +122,16 @@ export async function POST(req) {
       }
 
       case 'addManualIncome': {
-        const [amount, source, note, extra, isCarried] = args;
+        const [rawAmount, source, note, extra, isCarried] = args;
+        const amount = parseValidAmount(rawAmount);
+        if (amount === null || amount <= 0) {
+          return NextResponse.json({ error: 'Valid positive amount is required' }, { status: 400 });
+        }
         const { error } = await supabase.from('transactions').insert([{
           kind: 'incoming',
           amount,
-          source_or_merchant: source,
-          note: note || '',
+          source_or_merchant: sanitizeStr(source, 200) || 'Manual Income',
+          note: sanitizeStr(note, 500),
           is_carried_forward: !!isCarried,
           transaction_date: new Date().toISOString()
         }]);
