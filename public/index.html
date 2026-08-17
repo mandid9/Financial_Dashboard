@@ -678,6 +678,37 @@
   </div>
 </div>
 
+<!-- Debt Action Choice Modal -->
+<div id="modal-debt-choice" class="modal-backdrop" onclick="closeModal(event, 'modal-debt-choice')">
+  <div class="modal" style="max-width:380px; text-align:center">
+    <div style="font-size:36px; margin-bottom:8px">💳</div>
+    <h2 style="margin-bottom:8px">Debt Transaction</h2>
+    <p style="font-size:14px; color:var(--text-secondary); margin-bottom:18px">
+      How should this transaction (<strong id="debt-choice-amount" style="color:var(--text)">EGP 0.00</strong>) be applied?
+    </p>
+    
+    <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px">
+      <button class="primary" style="padding:14px; text-align:left; display:flex; align-items:center; gap:12px" onclick="resolveDebtChoice('paid')">
+        <span style="font-size:22px">💵</span>
+        <div>
+          <strong style="display:block; font-size:14px">Paid Debt (Repayment)</strong>
+          <small style="opacity:0.8; font-size:11px">Records actual expense reducing current debt</small>
+        </div>
+      </button>
+
+      <button class="alt" style="padding:14px; text-align:left; display:flex; align-items:center; gap:12px; border:1px solid rgba(138,43,226,0.4)" onclick="resolveDebtChoice('increase')">
+        <span style="font-size:22px">📈</span>
+        <div>
+          <strong style="display:block; font-size:14px">Increase Debt Target</strong>
+          <small style="opacity:0.8; font-size:11px">Increases planned debt liability by this amount</small>
+        </div>
+      </button>
+    </div>
+
+    <button class="alt" style="width:100%; font-size:12px; padding:8px" onclick="closeModalForce('modal-debt-choice')">Cancel</button>
+  </div>
+</div>
+
 <script>
 // --- 1. STATE ---
 const state = {
@@ -1561,10 +1592,53 @@ function toggleExpand(id) {
 }
 
 // --- 5. TRANSACTION ACTIONS ---
+let pendingDebtAction = null;
+
+function promptDebtChoice(amount, onResolve) {
+  document.getElementById('debt-choice-amount').textContent = fmt(amount);
+  pendingDebtAction = onResolve;
+  document.getElementById('modal-debt-choice').classList.add('open');
+}
+
+async function resolveDebtChoice(choice) {
+  closeModalForce('modal-debt-choice');
+  if (typeof pendingDebtAction === 'function') {
+    const callback = pendingDebtAction;
+    pendingDebtAction = null;
+    await callback(choice);
+  }
+}
+
 async function saveTransaction(row, cid) {
   const cat = document.getElementById(`sel-${cid}`).value;
   const note = document.getElementById(`note-${cid}`).value;
   
+  const tx = (state.dashboard?.outgoing || []).find(t => String(t.row) === String(row));
+  const isDebt = (cat || '').toLowerCase() === 'debt' || (cat || '').toLowerCase().includes('debt');
+  
+  if (isDebt && tx && tx.amount > 0) {
+    promptDebtChoice(tx.amount, async (choice) => {
+      try {
+        toast('Saving debt transaction...', 'info');
+        await server('saveCategory', [row, cat]);
+        await server('saveNote', [row, note]);
+        
+        if (choice === 'increase') {
+          const debtCat = state.budget?.categories?.find(c => (c.name || '').toLowerCase() === 'debt' || (c.name || '').toLowerCase().includes('debt'));
+          const currentPlanned = debtCat ? Number(debtCat.planned) : 0;
+          const newPlanned = currentPlanned + tx.amount;
+          const catName = debtCat ? debtCat.name : (cat || 'Debt');
+          await server('updateCategoryBudget', [catName, newPlanned]);
+          toast(`Debt target increased by ${fmt(tx.amount)} (Total: ${fmt(newPlanned)})`, 'success');
+        } else {
+          toast('Saved as Debt Repayment!', 'success');
+        }
+        loadData();
+      } catch(e) {}
+    });
+    return;
+  }
+
   try {
     toast('Saving...', 'info');
     await server('saveCategory', [row, cat]);
@@ -1737,12 +1811,42 @@ function updateSplitTotal() {
 
 async function submitSplit() {
   const parts = [];
+  let debtAmt = 0;
+  let debtCatName = '';
   document.querySelectorAll('.split-part').forEach(div => {
     const amt = parseFloat(div.querySelector('.split-amt').value) || 0;
     const cat = div.querySelector('.split-cat').value;
-    if (amt > 0) parts.push({amount: amt, category: cat});
+    if (amt > 0) {
+      parts.push({amount: amt, category: cat});
+      if ((cat || '').toLowerCase() === 'debt' || (cat || '').toLowerCase().includes('debt')) {
+        debtAmt += amt;
+        debtCatName = cat;
+      }
+    }
   });
   
+  if (debtAmt > 0) {
+    closeModalForce('modal-split');
+    promptDebtChoice(debtAmt, async (choice) => {
+      try {
+        toast('Splitting with debt...', 'info');
+        await server('splitTransaction', [state.splitRow, parts]);
+        if (choice === 'increase') {
+          const debtCat = state.budget?.categories?.find(c => (c.name || '').toLowerCase() === 'debt' || (c.name || '').toLowerCase().includes('debt'));
+          const currentPlanned = debtCat ? Number(debtCat.planned) : 0;
+          const newPlanned = currentPlanned + debtAmt;
+          const catName = debtCat ? debtCat.name : (debtCatName || 'Debt');
+          await server('updateCategoryBudget', [catName, newPlanned]);
+          toast(`Debt target increased by ${fmt(debtAmt)} (Total: ${fmt(newPlanned)})`, 'success');
+        } else {
+          toast('Split saved as Debt Repayment', 'success');
+        }
+        loadData();
+      } catch(e) {}
+    });
+    return;
+  }
+
   try {
     closeModalForce('modal-split');
     toast('Splitting...', 'info');
