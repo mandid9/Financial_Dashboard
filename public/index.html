@@ -607,9 +607,22 @@
     </div>
     <input type="text" inputmode="decimal" id="manual-amount" placeholder="Amount (0.00)">
     <input type="text" id="manual-merchant" placeholder="Merchant / Source">
-    <select id="manual-category">
+    <select id="manual-category" onchange="onManualCategoryChange()">
       <option value="">Select Category...</option>
     </select>
+    <div id="debt-action-group" style="display:none; background:var(--surface-hover); border:1px solid var(--surface-border); border-radius:10px; padding:10px; margin-bottom:12px">
+      <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted); display:block; margin-bottom:6px">Debt Action</label>
+      <div style="display:flex; gap:12px">
+        <label style="flex:1; display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer">
+          <input type="radio" name="debt-action-mode" value="paid" checked style="width:auto; margin:0; accent-color:var(--primary)">
+          <span>💵 Paid Debt (Repayment)</span>
+        </label>
+        <label style="flex:1; display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer">
+          <input type="radio" name="debt-action-mode" value="increase" style="width:auto; margin:0; accent-color:var(--primary)">
+          <span>📈 Increase Debt Target</span>
+        </label>
+      </div>
+    </div>
     <textarea id="manual-note" placeholder="Optional note"></textarea>
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px; font-size:13px; color:var(--text-secondary); cursor:pointer" onclick="document.getElementById('manual-carry').click()">
       <input type="checkbox" id="manual-carry" style="width:auto; margin:0; accent-color:var(--primary); width:16px; height:16px" onclick="event.stopPropagation()">
@@ -1051,32 +1064,24 @@ function renderSummaryReport() {
       </div>
     </div>
 
-    <!-- Debt & Credit Card Rollover Breakdown -->
+    <!-- Debt Status Breakdown -->
     <div class="debt-card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-        <strong>💳 Debt & Credit Card Rollover</strong>
-        <span class="badge ${debt.isFullyPaid ? 'green' : 'yellow'}">${debt.isFullyPaid ? '100% Settled ✓' : 'Active Debt'}</span>
+        <strong>💳 Debt Summary</strong>
+        <span class="badge ${debt.isFullyPaid ? 'green' : 'yellow'}">${debt.isFullyPaid ? '100% Settled ✓' : 'Active'}</span>
       </div>
       <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
         <div class="flex-row">
-          <span>Current Planned Debt:</span>
+          <span>Planned Debt:</span>
           <strong>${fmt(debt.plannedDebt || 0)}</strong>
         </div>
         <div class="flex-row">
-          <span>Debt Repaid This Cycle:</span>
+          <span>Paid Debt (Repayments):</span>
           <strong style="color:var(--success)">${fmt(debt.paidDebt || 0)}</strong>
         </div>
-        <div class="flex-row">
-          <span>Unpaid Debt Remainder:</span>
-          <strong style="color:${(debt.unpaidRemainder||0) > 0 ? 'var(--danger)' : 'var(--text)'}">${fmt(debt.unpaidRemainder || 0)}</strong>
-        </div>
-        <div class="flex-row">
-          <span>New Credit Card Spend:</span>
-          <strong>+ ${fmt(debt.newCreditCardSpend || 0)}</strong>
-        </div>
         <div class="flex-row" style="border-top:1px solid rgba(255,255,255,0.1); padding-top:6px; margin-top:4px; font-weight:700; color:var(--text)">
-          <span>👉 Next Cycle Debt Target:</span>
-          <span style="color:#c084fc; font-size:14px">${fmt(debt.nextCycleDebtTarget || 0)}</span>
+          <span>Unpaid Remainder (Eligible at End of Cycle):</span>
+          <span style="color:${(debt.unpaidRemainder||0) > 0 ? 'var(--danger)' : '#4ade80'}; font-size:14px">${fmt(debt.unpaidRemainder || 0)}</span>
         </div>
       </div>
     </div>
@@ -1266,20 +1271,22 @@ function renderHistory() {
   incEl.innerHTML = groupedHtml(incList, 'history-inc');
   
   document.querySelectorAll('.carry-checkbox').forEach(cb => {
-    const row = parseInt(cb.dataset.row);
+    const row = String(cb.dataset.row);
     const kind = cb.dataset.kind;
-    if (state.carryItems.some(i => i.row === row && i.kind === kind)) {
+    if (state.carryItems.some(i => String(i.row) === row && i.kind === kind)) {
       cb.checked = true;
     }
     cb.addEventListener('change', (e) => {
       if (e.target.checked) {
         state.carryItems.push({row, kind});
       } else {
-        state.carryItems = state.carryItems.filter(i => !(i.row === row && i.kind === kind));
+        state.carryItems = state.carryItems.filter(i => !(String(i.row) === row && i.kind === kind));
       }
       sessionStorage.setItem('carryItems', JSON.stringify(state.carryItems));
     });
   });
+
+  populateCategoryDropdowns();
 }
 
 document.getElementById('history-search').addEventListener('input', (e) => {
@@ -1621,10 +1628,20 @@ function openManualEntryModal() {
   document.getElementById('manual-note').value = '';
   const catEl = document.getElementById('manual-category');
   if (catEl) catEl.value = '';
+  const debtGroup = document.getElementById('debt-action-group');
+  if (debtGroup) debtGroup.style.display = 'none';
   const carryEl = document.getElementById('manual-carry');
   if (carryEl) carryEl.checked = false;
   document.getElementById('modal-manual').classList.add('open');
   setManualType('expense');
+}
+
+function onManualCategoryChange() {
+  const cat = (document.getElementById('manual-category').value || '').toLowerCase();
+  const debtGroup = document.getElementById('debt-action-group');
+  if (debtGroup) {
+    debtGroup.style.display = (cat === 'debt' || cat.includes('debt')) ? 'block' : 'none';
+  }
 }
 
 function setManualType(type) {
@@ -1632,6 +1649,9 @@ function setManualType(type) {
   document.getElementById('btn-type-expense').classList.toggle('active', type === 'expense');
   document.getElementById('btn-type-income').classList.toggle('active', type === 'income');
   document.getElementById('manual-category').style.display = type === 'expense' ? 'block' : 'none';
+  const debtGroup = document.getElementById('debt-action-group');
+  if (debtGroup && type !== 'expense') debtGroup.style.display = 'none';
+  else if (debtGroup && type === 'expense') onManualCategoryChange();
 }
 
 async function submitManualEntry() {
@@ -1647,11 +1667,24 @@ async function submitManualEntry() {
     toast('Saving...', 'info');
     if (state.manualType === 'expense') {
       const cat = document.getElementById('manual-category').value;
-      await server('addManualExpense', [amt, cat, note, src, isCarried]);
+      const isDebt = (cat || '').toLowerCase() === 'debt' || (cat || '').toLowerCase().includes('debt');
+      const debtMode = document.querySelector('input[name="debt-action-mode"]:checked')?.value || 'paid';
+      
+      if (isDebt && debtMode === 'increase') {
+        const debtCat = state.budget?.categories?.find(c => (c.name || '').toLowerCase() === 'debt' || (c.name || '').toLowerCase().includes('debt'));
+        const currentPlanned = debtCat ? Number(debtCat.planned) : 0;
+        const newPlanned = currentPlanned + amt;
+        const catName = debtCat ? debtCat.name : (cat || 'Debt');
+        await server('updateCategoryBudget', [catName, newPlanned]);
+        toast(`Debt planned liability increased by ${fmt(amt)} (Total: ${fmt(newPlanned)})`, 'success');
+      } else {
+        await server('addManualExpense', [amt, cat, note, src, isCarried]);
+        toast('Added successfully' + (isCarried ? ' (marked for next cycle)' : ''), 'success');
+      }
     } else {
       await server('addManualIncome', [amt, src, note, '', isCarried]);
+      toast('Added income successfully', 'success');
     }
-    toast('Added successfully' + (isCarried ? ' (marked for next cycle)' : ''), 'success');
     loadData();
   } catch(e) {}
 }

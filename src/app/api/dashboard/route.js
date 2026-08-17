@@ -83,23 +83,17 @@ export async function GET(req) {
         if (debtCatObj && t.category_id === debtCatObj.id) {
           currentDebtPaid += Number(t.amount);
         }
-        // If spent via Credit Card (and not already categorized as debt payment)
-        const isCC = /credit\s*card/i.test(t.source_or_merchant || '') || /credit\s*card/i.test(t.note || '');
-        if (isCC && (!debtCatObj || t.category_id !== debtCatObj.id)) {
-          currentNewCreditCardSpend += Number(t.amount);
-        }
       }
     });
 
     const unpaidDebtRemainder = Math.max(0, currentDebtPlanned - currentDebtPaid);
-    const nextCycleDebtTarget = unpaidDebtRemainder + currentNewCreditCardSpend;
+    const nextCycleDebtTarget = unpaidDebtRemainder;
 
     const debtSummary = {
       plannedDebt: currentDebtPlanned,
       paidDebt: currentDebtPaid,
       unpaidRemainder: unpaidDebtRemainder,
       isFullyPaid: currentDebtPaid >= currentDebtPlanned && currentDebtPlanned > 0,
-      newCreditCardSpend: currentNewCreditCardSpend,
       nextCycleDebtTarget: nextCycleDebtTarget
     };
 
