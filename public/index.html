@@ -802,11 +802,11 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 
 // --- 4. RENDERING ---
 function renderAll() {
-  renderHome();
-  renderHistory();
-  renderSettings();
-  renderInsights();
-  populateCategoryDropdowns();
+  try { renderHome(); } catch(e) { console.error('renderHome error:', e); }
+  try { renderHistory(); } catch(e) { console.error('renderHistory error:', e); }
+  try { renderSettings(); } catch(e) { console.error('renderSettings error:', e); }
+  try { renderInsights(); } catch(e) { console.error('renderInsights error:', e); }
+  try { populateCategoryDropdowns(); } catch(e) { console.error('populateCategoryDropdowns error:', e); }
 }
 
 function renderHome() {
@@ -1105,59 +1105,74 @@ function renderSummaryReport() {
 }
 
 function renderInsights() {
-  if (!state.dashboard || !state.dashboard.historyCycles) return;
+  if (!state.dashboard || !state.budget) return;
   
-  // Add current cycle to the end for comparison
-  const totalCycleIncome = state.dashboard.incoming.reduce((sum, t) => sum + t.amount, 0);
+  const historyCycles = state.dashboard.historyCycles || [];
+  const cycles = [...historyCycles];
+  const currentLabel = state.cycle ? state.cycle.label : 'Current';
+  
+  // Add current active cycle to the end for comparison
+  const totalCycleIncome = (state.dashboard.incoming || []).reduce((sum, t) => sum + t.amount, 0);
   cycles.push({
-    label: 'Current',
+    label: currentLabel,
     outgoing: state.budget.metrics.actual,
     income: totalCycleIncome
   });
 
   // Render Bar Chart
-  const maxVal = Math.max(...cycles.map(c => Math.max(c.outgoing, c.income, 100)));
+  const maxVal = Math.max(...cycles.map(c => Math.max(c.outgoing, c.income, 100)), 100);
   const chartEl = document.getElementById('insights-charts');
   const labelsEl = document.getElementById('insights-labels');
   
-  chartEl.innerHTML = cycles.map(c => {
-    const hOut = (c.outgoing / maxVal) * 100;
-    const hInc = (c.income / maxVal) * 100;
-    return `
-      <div style="flex:1; display:flex; gap:4px; height:100%; align-items:flex-end; justify-content:center">
-        <div style="width:12px; height:${hInc}%; background:var(--success); border-radius:4px 4px 0 0" 
-             onmouseover="showChartTooltip(event, 'Income (${c.label})', ${c.income})" onmouseout="hideChartTooltip()" onmousemove="moveChartTooltip(event)"></div>
-        <div style="width:12px; height:${hOut}%; background:var(--danger); border-radius:4px 4px 0 0"
-             onmouseover="showChartTooltip(event, 'Expenses (${c.label})', ${c.outgoing})" onmouseout="hideChartTooltip()" onmousemove="moveChartTooltip(event)"></div>
-      </div>
-    `;
-  }).join('');
-  
-  labelsEl.innerHTML = cycles.map(c => `<div style="flex:1; overflow:hidden; text-overflow:ellipsis">${c.label}</div>`).join('');
+  if (chartEl && labelsEl) {
+    chartEl.innerHTML = cycles.map(c => {
+      const hOut = (c.outgoing / maxVal) * 100;
+      const hInc = (c.income / maxVal) * 100;
+      return `
+        <div style="flex:1; display:flex; gap:4px; height:100%; align-items:flex-end; justify-content:center">
+          <div style="width:12px; height:${hInc}%; background:var(--success); border-radius:4px 4px 0 0" 
+               onmouseover="showChartTooltip(event, 'Income (${c.label})', ${c.income})" onmouseout="hideChartTooltip()" onmousemove="moveChartTooltip(event)"></div>
+          <div style="width:12px; height:${hOut}%; background:var(--danger); border-radius:4px 4px 0 0"
+               onmouseover="showChartTooltip(event, 'Expenses (${c.label})', ${c.outgoing})" onmouseout="hideChartTooltip()" onmousemove="moveChartTooltip(event)"></div>
+        </div>
+      `;
+    }).join('');
+    
+    labelsEl.innerHTML = cycles.map(c => `<div style="flex:1; overflow:hidden; text-overflow:ellipsis">${c.label}</div>`).join('');
+  }
   
   // Render Details (Compare Current vs Last)
   const detailsEl = document.getElementById('insights-details');
-  if (cycles.length >= 2) {
-    const current = state.budget.categories;
-    const last = cycles[cycles.length - 2].categories || {};
-    
-    const diffs = current.map(c => {
-      const lastAmount = last[c.name] || 0;
-      const diff = c.actual - lastAmount;
-      return { name: c.name, diff, actual: c.actual, lastAmount };
-    }).filter(c => Math.abs(c.diff) > 0).sort((a,b) => b.diff - a.diff);
-    
-    detailsEl.innerHTML = `<h3>Changes vs Last Cycle</h3><br>` + 
-      diffs.map(c => {
-        const color = c.diff > 0 ? 'var(--danger)' : 'var(--success)';
-        const sign = c.diff > 0 ? '+' : '';
-        return `
-          <div class="card" style="padding:12px; display:flex; justify-content:space-between">
-            <div><strong>${esc(c.name)}</strong><br><small>${fmt(c.lastAmount)} → ${fmt(c.actual)}</small></div>
-            <div style="color:${color}; font-weight:600">${sign}${fmt(c.diff)}</div>
-          </div>
-        `;
-      }).join('');
+  if (detailsEl) {
+    const prevCyclesWithCats = historyCycles.filter(c => c.categories && Object.keys(c.categories).length > 0);
+    if (prevCyclesWithCats.length > 0) {
+      const last = prevCyclesWithCats[prevCyclesWithCats.length - 1].categories || {};
+      const current = state.budget.categories;
+      
+      const diffs = current.map(c => {
+        const lastAmount = last[c.name] || 0;
+        const diff = c.actual - lastAmount;
+        return { name: c.name, diff, actual: c.actual, lastAmount };
+      }).filter(c => Math.abs(c.diff) > 0).sort((a,b) => b.diff - a.diff);
+      
+      if (diffs.length > 0) {
+        detailsEl.innerHTML = `<h3>Changes vs Last Cycle</h3><br>` + 
+          diffs.map(c => {
+            const color = c.diff > 0 ? 'var(--danger)' : 'var(--success)';
+            const sign = c.diff > 0 ? '+' : '';
+            return `
+              <div class="card" style="padding:12px; display:flex; justify-content:space-between">
+                <div><strong>${esc(c.name)}</strong><br><small>${fmt(c.lastAmount)} → ${fmt(c.actual)}</small></div>
+                <div style="color:${color}; font-weight:600">${sign}${fmt(c.diff)}</div>
+              </div>
+            `;
+          }).join('');
+      } else {
+        detailsEl.innerHTML = `<div class="card" style="text-align:center; padding:20px; color:var(--text-muted)">No category variances vs previous cycle.</div>`;
+      }
+    } else {
+      detailsEl.innerHTML = `<div class="card" style="text-align:center; padding:20px; color:var(--text-muted)">Historical cycle breakdown will automatically appear here as past cycles accumulate.</div>`;
+    }
   }
 }
 
