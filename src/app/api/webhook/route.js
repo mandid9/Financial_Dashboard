@@ -1,30 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import webpush from 'web-push';
-
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BPnDeX4aUsrrHasl3PVoX9Cc2jWmbN9Doi1PXThwupBsJOjFWLioEWEmaXcBUAhA3Ezl3aIUFk81rYA8i3jFYXA';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '55Jm7p3LrpUYkB9OYrt6IP9qHS-7wZG0hs_w80TSz7M';
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@personalfinance.app';
-
-webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-
-async function notifySubscribers(payload) {
-  try {
-    const { data: subs } = await supabase.from('push_subscriptions').select('*');
-    if (!subs || subs.length === 0) return;
-    for (const s of subs) {
-      try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify(payload));
-      } catch (e) {
-        if (e.statusCode === 410 || e.statusCode === 404) {
-          await supabase.from('push_subscriptions').delete().eq('endpoint', s.endpoint);
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Push notify error in webhook:', err);
-  }
-}
+import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
 
 export async function POST(req) {
   try {
@@ -79,23 +55,18 @@ async function logExpense(message, time) {
 
   if (error) throw error;
 
-  // Count unhandled
-  const { count } = await supabase
-    .from('transactions')
-    .select('*', { count: 'exact', head: true })
-    .eq('kind', 'outgoing')
-    .is('category_id', null);
+  // Instant notification for logged transaction
+  await sendPushToAll({
+    title: `💸 EGP ${Number(amount).toLocaleString()} Spent`,
+    body: `${merchant || source} \u2022 Needs category. Tap to review.`,
+    icon: '/icon.svg',
+    url: '/index.html'
+  });
 
-  if (count && count >= 5) {
-    await notifySubscribers({
-      title: `📋 ${count} Transactions Need Attention`,
-      body: `You have ${count} uncategorized transactions waiting for review. Tap to categorize.`,
-      icon: '/icon.svg',
-      url: '/index.html'
-    });
-  }
+  // Evaluate budget rules
+  await evaluateAndDispatchTriggers(false);
 
-  return new NextResponse(`Success | Unhandled: ${count}`, { status: 200 });
+  return new NextResponse(`Success`, { status: 200 });
 }
 
 async function logIncome(message, time, type, note) {
@@ -113,6 +84,14 @@ async function logIncome(message, time, type, note) {
     }]);
 
   if (error) throw error;
+
+  await sendPushToAll({
+    title: `💰 EGP ${Number(amount).toLocaleString()} Income Received`,
+    body: `${type} \u2022 ${note || 'Income logged'}`,
+    icon: '/icon.svg',
+    url: '/index.html'
+  });
+
   return new NextResponse('Success', { status: 200 });
 }
 
@@ -126,18 +105,48 @@ async function logSalary(message, time) {
     .insert([{
       kind: 'incoming',
       amount: Number(amount),
-      source_or_merchant: 'Bank Transfer — Salary',
+      source_or_merchant: 'Bank Transfer \u2014 Salary',
       note: 'Paycheck',
       transaction_date: time
     }]);
 
   if (error) throw error;
+
+  await sendPushToAll({
+    title: `🎉 Salary Received: EGP ${Number(amount).toLocaleString()}`,
+    body: `Paycheck deposited into your account.`,
+    icon: '/icon.svg',
+    url: '/index.html'
+  });
+
   return new NextResponse('Success', { status: 200 });
 }
 
 async function handleReversal(message, time) {
   const amount = parseEgp(message);
   if (!amount) return new NextResponse('Could not parse reversal', { status: 400 });
+
+  const { error } = await supabase
+    .from('transactions')
+    .insert([{
+      kind: 'outgoing',
+      amount: -Number(amount),
+      source_or_merchant: 'Refund / Reversal',
+      note: 'REVERSED',
+      transaction_date: time
+    }]);
+
+  if (error) throw error;
+
+  await sendPushToAll({
+    title: `🔄 Refund / Reversal: EGP ${Number(amount).toLocaleString()}`,
+    body: `Transaction reversed and credited back.`,
+    icon: '/icon.svg',
+    url: '/index.html'
+  });
+
+  return new NextResponse('Success', { status: 200 });
+}
 
   // Find exact match
   const { data: matches } = await supabase

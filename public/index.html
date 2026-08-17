@@ -1611,6 +1611,18 @@ async function initPushNotifications() {
     if (sub) {
       pushSubscription = sub;
       updatePushUI('subscribed');
+
+      // Silently evaluate rules in the background once per day
+      const lastCheck = localStorage.getItem('last_push_eval');
+      const today = new Date().toDateString();
+      if (lastCheck !== today) {
+        localStorage.setItem('last_push_eval', today);
+        fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'evaluate' })
+        }).catch(() => {});
+      }
     } else {
       updatePushUI('unsubscribed');
     }

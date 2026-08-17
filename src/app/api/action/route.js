@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { evaluateAndDispatchTriggers } from '@/lib/push';
 
 async function getCategoryIdByName(rawName) {
   if (!rawName) return null;
@@ -35,6 +36,7 @@ export async function POST(req) {
         const catId = await getCategoryIdByName(catName);
         const { error } = await supabase.from('transactions').update({ category_id: catId }).eq('id', id);
         if (error) throw error;
+        evaluateAndDispatchTriggers(false).catch(err => console.warn('Push alert error:', err));
         return NextResponse.json({ success: true });
       }
       
@@ -73,6 +75,7 @@ export async function POST(req) {
           transaction_date: new Date().toISOString()
         }]);
         if (error) throw error;
+        evaluateAndDispatchTriggers(false).catch(err => console.warn('Push alert error:', err));
         return NextResponse.json({ success: true });
       }
 
