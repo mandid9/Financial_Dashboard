@@ -370,6 +370,74 @@
     .variance-row .vr-name { font-weight:500; font-size:13px; }
     .variance-row .vr-detail { font-size:11px; color:var(--text-muted); }
     .variance-row .vr-diff { font-weight:700; font-size:14px; }
+
+    /* Cycle Navigator */
+    .cycle-nav-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 14px;
+      padding: 6px 10px;
+      margin-top: 10px;
+    }
+    .cycle-nav-btn {
+      background: var(--surface-hover);
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--text);
+      transition: all 0.2s;
+    }
+    .cycle-nav-btn:hover { background: rgba(255,255,255,0.12); }
+    .cycle-nav-center {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .cycle-label {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .cycle-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 6px;
+      text-transform: uppercase;
+    }
+    .cycle-badge.current { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); }
+    .cycle-badge.next { background: rgba(138, 43, 226, 0.2); color: #c084fc; border: 1px solid rgba(138, 43, 226, 0.4); }
+    .cycle-badge.past { background: rgba(100, 116, 139, 0.2); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.4); }
+
+    .cycle-banner {
+      background: linear-gradient(135deg, rgba(138, 43, 226, 0.15), rgba(99, 102, 241, 0.15));
+      border: 1px solid rgba(138, 43, 226, 0.3);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .cycle-banner.archive {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+    .debt-card {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(138, 43, 226, 0.08));
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
   </style>
 </head>
 <body>
@@ -377,16 +445,29 @@
 <div class="app-container">
   
   <div class="header-bar">
-    <h1>Expenses</h1>
-    <small id="last-updated">Updating...</small>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h1>Expenses</h1>
+      <small id="last-updated">Updating...</small>
+    </div>
+    <!-- Cycle Navigator -->
+    <div class="cycle-nav-bar">
+      <button class="cycle-nav-btn" onclick="prevCycle()" title="Previous Cycle">◀</button>
+      <div class="cycle-nav-center" onclick="resetCycle()" title="Click to jump to Current Cycle">
+        <span id="cycle-label" class="cycle-label">JUL / AUG '26</span>
+        <span id="cycle-badge" class="cycle-badge current">Current</span>
+      </div>
+      <button class="cycle-nav-btn" onclick="nextCycle()" title="Next Cycle">▶</button>
+    </div>
   </div>
 
   <!-- HOME PAGE -->
   <div id="page-home" class="page active">
+    <div id="cycle-state-banner" class="cycle-banner" style="display:none"></div>
+
     <div class="hero-card">
-      <h2>Today's Spending</h2>
-      <h1 id="home-today-total" class="skeleton skeleton-hero"></h1>
-      <div id="home-today-income" class="income-text"></div>
+      <h2 id="home-hero-title">Live Net Balance</h2>
+      <h1 id="home-net-balance" class="skeleton skeleton-hero"></h1>
+      <div id="home-hero-subtitle" class="income-text"></div>
       <div id="home-month-comparison" style="margin-top: 8px; font-size: 13px; opacity: 0.8;"></div>
     </div>
 
@@ -587,6 +668,8 @@
 <script>
 // --- 1. STATE ---
 const state = {
+  cycle: null,
+  cycleOffset: 0,
   dashboard: null,
   budget: null,
   expandedCardId: null,
@@ -633,7 +716,7 @@ function toast(message, type = 'info') {
 
 function server(fnName, args = [], onSuccess = null, loadingMsg = null) {
   if (loadingMsg) toast(loadingMsg, 'info');
-  return fetch(fnName === 'getDashboardData' || fnName === 'getBudgetSettings' ? '/api/dashboard?t=' + Date.now() : '/api/action', {
+  return fetch(fnName === 'getDashboardData' || fnName === 'getBudgetSettings' ? '/api/dashboard?cycleOffset=' + state.cycleOffset + '&t=' + Date.now() : '/api/action', {
     method: fnName === 'getDashboardData' || fnName === 'getBudgetSettings' ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: fnName === 'getDashboardData' || fnName === 'getBudgetSettings' ? undefined : JSON.stringify({ action: fnName, args }),
@@ -643,7 +726,6 @@ function server(fnName, args = [], onSuccess = null, loadingMsg = null) {
   .then(res => {
     if (res.error) throw new Error(res.error);
     
-    // For GET /api/dashboard, the old UI expects two separate calls. We bundled them in one endpoint.
     let finalRes = res;
     if (fnName === 'getDashboardData') finalRes = res.dashboard;
     if (fnName === 'getBudgetSettings') finalRes = res.budget;
@@ -657,15 +739,17 @@ function server(fnName, args = [], onSuccess = null, loadingMsg = null) {
     throw err;
   });
 }
+
 async function loadData(silent = false) {
   if (state.isLoading) return;
   state.isLoading = true;
   
   try {
-    const res = await fetch('/api/dashboard?t=' + Date.now(), { cache: 'no-store' });
+    const res = await fetch('/api/dashboard?cycleOffset=' + state.cycleOffset + '&t=' + Date.now(), { cache: 'no-store' });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     
+    state.cycle = data.cycle;
     state.dashboard = data.dashboard;
     state.budget = data.budget;
     
@@ -679,6 +763,23 @@ async function loadData(silent = false) {
     if (!silent) toast('Error: ' + (e.message || e), 'error');
   } finally {
     state.isLoading = false;
+  }
+}
+
+function prevCycle() {
+  state.cycleOffset -= 1;
+  loadData();
+}
+
+function nextCycle() {
+  state.cycleOffset += 1;
+  loadData();
+}
+
+function resetCycle() {
+  if (state.cycleOffset !== 0) {
+    state.cycleOffset = 0;
+    loadData();
   }
 }
 
@@ -709,37 +810,71 @@ function renderAll() {
 }
 
 function renderHome() {
-  if (!state.dashboard || !state.budget) return;
+  if (!state.dashboard || !state.budget || !state.cycle) return;
+  const c = state.cycle;
+  const m = state.budget.metrics;
   
-  // Hero
-  document.getElementById('home-today-total').textContent = fmt(state.dashboard.todayTotal);
-  document.getElementById('home-today-total').className = ''; 
-  const incEl = document.getElementById('home-today-income');
-  if (state.dashboard.todayIncome > 0) {
-    incEl.textContent = `+ ${fmt(state.dashboard.todayIncome)} income`;
+  // Cycle Navigator UI
+  document.getElementById('cycle-label').textContent = c.label;
+  const badgeEl = document.getElementById('cycle-badge');
+  badgeEl.textContent = c.isCurrent ? 'Current' : (c.isNext ? 'Next Preview' : 'Past Archive');
+  badgeEl.className = 'cycle-badge ' + (c.isCurrent ? 'current' : (c.isNext ? 'next' : 'past'));
+
+  // Cycle Banner
+  const bannerEl = document.getElementById('cycle-state-banner');
+  if (c.isNext) {
+    bannerEl.style.display = 'flex';
+    bannerEl.className = 'cycle-banner';
+    bannerEl.innerHTML = `<span>🔮 <strong>Next Cycle Preview</strong> • Showing carried items & calculated debt rollover</span><button class="alt" style="padding:4px 8px; font-size:11px" onclick="resetCycle()">Go Current</button>`;
+  } else if (c.isPast) {
+    bannerEl.style.display = 'flex';
+    bannerEl.className = 'cycle-banner archive';
+    bannerEl.innerHTML = `<span>📁 <strong>Historical Archive</strong> • Past recorded cycle data (Read-Only)</span><button class="alt" style="padding:4px 8px; font-size:11px" onclick="resetCycle()">Go Current</button>`;
   } else {
-    incEl.textContent = '';
+    bannerEl.style.display = 'none';
+  }
+
+  // Hero Card: Net Balance (Total Income - Actual Spend)
+  const heroTitle = document.getElementById('home-hero-title');
+  heroTitle.textContent = c.isCurrent ? 'Live Net Balance' : (c.isNext ? 'Projected Net Balance' : 'Final Net Balance');
+  
+  const heroBal = document.getElementById('home-net-balance');
+  heroBal.textContent = fmt(m.netBalance);
+  heroBal.className = m.netBalance >= 0 ? 'text-green' : 'text-red';
+  
+  const incEl = document.getElementById('home-hero-subtitle');
+  if (c.isCurrent) {
+    let sub = '';
+    if (state.dashboard.todayIncome > 0) sub += `+ ${fmt(state.dashboard.todayIncome)} income today \u2022 `;
+    sub += `${fmt(state.dashboard.todayTotal)} spent today`;
+    incEl.textContent = sub;
+  } else if (c.isNext) {
+    incEl.textContent = `Carried items preview \u2022 ${fmt(m.planned)} planned`;
+  } else {
+    incEl.textContent = `Income: ${fmt(m.income)} \u2022 Spent: ${fmt(m.actual)}`;
   }
   
   // Metrics Grid
-  const m = state.budget.metrics;
-  const balColor = m.balance >= 0 ? 'text-green' : 'text-red';
+  // Available: Planned - Actual
+  const availColor = m.available >= 0 ? 'text-green' : 'text-red';
+  const daysText = c.isCurrent ? `${m.days} days left` : (c.isNext ? `${m.days} days duration` : 'Archived');
+
   document.getElementById('home-metrics-grid').innerHTML = `
     <div class="card">
-      <small>Planned</small>
+      <small>🛡️ Available Budget</small>
+      <div class="amount ${availColor}">${fmt(m.available)}</div>
+    </div>
+    <div class="card">
+      <small>📈 Planned</small>
       <div class="amount">${fmt(m.planned)}</div>
     </div>
     <div class="card">
-      <small>Actual</small>
+      <small>📉 Actual Spend</small>
       <div class="amount">${fmt(m.actual)}</div>
     </div>
     <div class="card">
-      <small>Balance</small>
-      <div class="amount ${balColor}">${fmt(m.balance)}</div>
-    </div>
-    <div class="card">
-      <small>Days Left</small>
-      <div class="amount">${m.days}</div>
+      <small>⏳ Cycle Time</small>
+      <div class="amount" style="font-size:16px">${daysText}</div>
     </div>
   `;
   
@@ -862,7 +997,7 @@ function moveChartTooltip(e) {
   tt.style.top = y + 'px';
 }
 function hideChartTooltip() {
-  document.getElementById('chart-tooltip').style.opacity = 0;
+document.getElementById('chart-tooltip').style.opacity = 0;
 }
 
 function openSummaryModal() {
@@ -871,48 +1006,82 @@ function openSummaryModal() {
 }
 
 function renderSummaryReport() {
-  if (!state.budget || !state.dashboard) return;
+  if (!state.budget || !state.dashboard || !state.cycle) return;
   const m = state.budget.metrics;
   const cats = state.budget.categories;
-  const totalIncome = state.dashboard.incoming.reduce((s, t) => s + t.amount, 0);
+  const debt = state.dashboard.debtSummary || {};
   
-  // Commitments: sum of positive remaining values (what you still need to pay)
-  const commitments = cats.reduce((s, c) => s + Math.max(0, c.remaining), 0);
-  // Projected savings: Income - Planned
-  const projectedSavings = totalIncome - m.planned;
-  
-  const balColor = m.balance >= 0 ? 'var(--success)' : 'var(--danger)';
-  const saveColor = projectedSavings >= 0 ? 'var(--success)' : 'var(--danger)';
+  const netBalColor = m.netBalance >= 0 ? 'var(--success)' : 'var(--danger)';
+  const availColor = m.available >= 0 ? 'var(--success)' : 'var(--danger)';
+  const saveColor = m.probableSavings >= 0 ? 'var(--success)' : 'var(--danger)';
   
   let html = `
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px; text-align:center">
+      Cycle: <strong>${state.cycle.label}</strong> (${state.cycle.isCurrent ? 'Current' : (state.cycle.isNext ? 'Next Preview' : 'Archive')})
+    </div>
+
     <div class="summary-grid">
       <div class="summary-metric">
-        <small>Balance</small>
-        <div class="val" style="color:${balColor}">${fmt(m.balance)}</div>
+        <small>💵 Net Balance</small>
+        <div class="val" style="color:${netBalColor}">${fmt(m.netBalance)}</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Income \u2212 Actual</div>
       </div>
       <div class="summary-metric">
-        <small>Days Left</small>
-        <div class="val">${m.days}</div>
+        <small>🛡️ Available</small>
+        <div class="val" style="color:${availColor}">${fmt(m.available)}</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Planned \u2212 Actual</div>
       </div>
       <div class="summary-metric">
-        <small>Planned</small>
+        <small>📈 Planned</small>
         <div class="val">${fmt(m.planned)}</div>
       </div>
       <div class="summary-metric">
-        <small>Actual</small>
+        <small>📉 Actual Spend</small>
         <div class="val">${fmt(m.actual)}</div>
       </div>
       <div class="summary-metric">
-        <small>\ud83c\udfaf Commitments</small>
-        <div class="val" style="color:var(--warning)">${fmt(commitments)}</div>
+        <small>🎯 Commitments</small>
+        <div class="val" style="color:var(--warning)">${fmt(m.commitments)}</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Unpaid remaining</div>
       </div>
       <div class="summary-metric">
-        <small>\ud83d\udcb0 Projected Savings</small>
-        <div class="val" style="color:${saveColor}">${fmt(projectedSavings)}</div>
+        <small>💰 Probable Savings</small>
+        <div class="val" style="color:${saveColor}">${fmt(m.probableSavings)}</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Income \u2212 Planned</div>
+      </div>
+    </div>
+
+    <!-- Debt & Credit Card Rollover Breakdown -->
+    <div class="debt-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+        <strong>💳 Debt & Credit Card Rollover</strong>
+        <span class="badge ${debt.isFullyPaid ? 'green' : 'yellow'}">${debt.isFullyPaid ? '100% Settled ✓' : 'Active Debt'}</span>
+      </div>
+      <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
+        <div class="flex-row">
+          <span>Current Planned Debt:</span>
+          <strong>${fmt(debt.plannedDebt || 0)}</strong>
+        </div>
+        <div class="flex-row">
+          <span>Debt Repaid This Cycle:</span>
+          <strong style="color:var(--success)">${fmt(debt.paidDebt || 0)}</strong>
+        </div>
+        <div class="flex-row">
+          <span>Unpaid Debt Remainder:</span>
+          <strong style="color:${(debt.unpaidRemainder||0) > 0 ? 'var(--danger)' : 'var(--text)'}">${fmt(debt.unpaidRemainder || 0)}</strong>
+        </div>
+        <div class="flex-row">
+          <span>New Credit Card Spend:</span>
+          <strong>+ ${fmt(debt.newCreditCardSpend || 0)}</strong>
+        </div>
+        <div class="flex-row" style="border-top:1px solid rgba(255,255,255,0.1); padding-top:6px; margin-top:4px; font-weight:700; color:var(--text)">
+          <span>👉 Next Cycle Debt Target:</span>
+          <span style="color:#c084fc; font-size:14px">${fmt(debt.nextCycleDebtTarget || 0)}</span>
+        </div>
       </div>
     </div>
     
-    <h3 style="margin-bottom:12px; font-size:14px; color:var(--text-secondary)">\ud83d\udccb Variance Report</h3>
+    <h3 style="margin-bottom:12px; font-size:14px; color:var(--text-secondary)">📋 Variance Report</h3>
   `;
   
   const sorted = [...cats].filter(c => c.planned > 0 || c.actual > 0).sort((a,b) => (a.remaining) - (b.remaining));
@@ -920,12 +1089,12 @@ function renderSummaryReport() {
     const diff = c.planned - c.actual;
     const diffColor = diff >= 0 ? 'var(--success)' : 'var(--danger)';
     const sign = diff >= 0 ? '+' : '';
-    const icon = diff >= 0 ? '\u2705' : '\ud83d\udd34';
+    const icon = diff >= 0 ? '✅' : '🔴';
     html += `
       <div class="variance-row">
         <div>
           <div class="vr-name">${icon} ${esc(c.name)}</div>
-          <div class="vr-detail">${fmt(c.planned)} planned \u2022 ${fmt(c.actual)} spent</div>
+          <div class="vr-detail">${fmt(c.planned)} planned • ${fmt(c.actual)} spent</div>
         </div>
         <div class="vr-diff" style="color:${diffColor}">${sign}${fmt(diff)}</div>
       </div>
@@ -937,7 +1106,6 @@ function renderSummaryReport() {
 
 function renderInsights() {
   if (!state.dashboard || !state.dashboard.historyCycles) return;
-  const cycles = [...state.dashboard.historyCycles]; // copy
   
   // Add current cycle to the end for comparison
   const totalCycleIncome = state.dashboard.incoming.reduce((sum, t) => sum + t.amount, 0);
@@ -1581,12 +1749,13 @@ async function deleteCategory(name) {
 
 // --- 8. CYCLE MANAGEMENT ---
 async function confirmCloseCycle() {
-  if (!confirm('Are you sure you want to close this cycle? This will create a backup sheet and reset current data.')) return;
+  if (!confirm('Are you sure you want to close this cycle? This will carry marked items and set next cycle debt budget.')) return;
   try {
-    const res = await server('closeBudgetPeriodAndStartFresh', [state.carryItems], null, 'Closing cycle, please wait...');
+    const nextDebt = state.dashboard && state.dashboard.debtSummary ? state.dashboard.debtSummary.nextCycleDebtTarget : undefined;
+    const res = await server('closeBudgetPeriodAndStartFresh', [state.carryItems, nextDebt], null, 'Closing cycle, please wait...');
     state.carryItems = [];
     sessionStorage.setItem('carryItems', '[]');
-    toast('Cycle closed! Opening balance: ' + fmt(res.openingBalance), 'success');
+    toast('Cycle closed! Next debt budget set: ' + (nextDebt ? fmt(nextDebt) : 'EGP 0.00'), 'success');
     if (res.backupUrl) console.log("Backup at: ", res.backupUrl);
     loadData();
   } catch(e) {}

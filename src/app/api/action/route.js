@@ -149,10 +149,18 @@ export async function POST(req) {
       }
 
       case 'closeBudgetPeriodAndStartFresh': {
-        const [carryItems] = args;
-        for (const item of carryItems) {
-          const { error } = await supabase.from('transactions').update({ is_carried_forward: true }).eq('id', item.row);
-          if (error) throw error;
+        const [carryItems, nextDebtAmount] = args;
+        if (Array.isArray(carryItems)) {
+          for (const item of carryItems) {
+            const { error } = await supabase.from('transactions').update({ is_carried_forward: true }).eq('id', item.row);
+            if (error) throw error;
+          }
+        }
+        if (typeof nextDebtAmount === 'number') {
+          const { data: debtCat } = await supabase.from('categories').select('id, name').ilike('name', 'debt').maybeSingle();
+          if (debtCat) {
+            await supabase.from('categories').update({ planned_amount: nextDebtAmount }).eq('id', debtCat.id);
+          }
         }
         return NextResponse.json({ openingBalance: 0, backupUrl: 'Supabase auto-backups enabled' });
       }
