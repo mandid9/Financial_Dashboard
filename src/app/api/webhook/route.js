@@ -126,28 +126,6 @@ async function handleReversal(message, time) {
   const amount = parseEgp(message);
   if (!amount) return new NextResponse('Could not parse reversal', { status: 400 });
 
-  const { error } = await supabase
-    .from('transactions')
-    .insert([{
-      kind: 'outgoing',
-      amount: -Number(amount),
-      source_or_merchant: 'Refund / Reversal',
-      note: 'REVERSED',
-      transaction_date: time
-    }]);
-
-  if (error) throw error;
-
-  await sendPushToAll({
-    title: `🔄 Refund / Reversal: EGP ${Number(amount).toLocaleString()}`,
-    body: `Transaction reversed and credited back.`,
-    icon: '/icon.svg',
-    url: '/index.html'
-  });
-
-  return new NextResponse('Success', { status: 200 });
-}
-
   // Find exact match
   const { data: matches } = await supabase
     .from('transactions')
@@ -166,7 +144,16 @@ async function handleReversal(message, time) {
       .eq('id', match.id);
   }
 
-  return await logIncome(message, time, 'Reversal/Refund', matches && matches.length > 0 ? 'Original matched' : '');
+  const res = await logIncome(message, time, 'Reversal/Refund', matches && matches.length > 0 ? 'Original matched' : '');
+
+  await sendPushToAll({
+    title: `🔄 Refund / Reversal: EGP ${Number(amount).toLocaleString()}`,
+    body: `Transaction reversed and credited back.`,
+    icon: '/icon.svg',
+    url: '/index.html'
+  });
+
+  return res;
 }
 
 function parseEgp(t) {
