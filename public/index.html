@@ -936,7 +936,10 @@ function renderHome() {
   const listEl = document.getElementById('home-uncategorized-list');
 
   if (c.isNext) {
-    const carriedAll = state.dashboard.outgoing.filter(t => t.is_carried_forward || (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row))));
+    const carriedAll = (state.dashboard.carriedTransactions && state.dashboard.carriedTransactions.length > 0)
+      ? state.dashboard.carriedTransactions
+      : state.dashboard.outgoing.filter(t => t.is_carried_forward || (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row))));
+    
     headerEl.innerHTML = `📌 Carried Items for Next Cycle <span class="badge blue">${carriedAll.length}</span>`;
     if (carriedAll.length === 0) {
       listEl.innerHTML = `<div class="card" style="text-align:center; padding:24px 16px; color:var(--text-muted); font-size:13px">No transactions marked for next cycle yet.<br>Click 📌 on any transaction in History to carry it over.</div>`;
@@ -1119,7 +1122,9 @@ function renderSummaryReport() {
 
     <!-- Carried Forward Transactions Breakdown -->
     ${(() => {
-      const carried = (state.dashboard.outgoing || []).filter(t => t.is_carried_forward || (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row))));
+      const carried = (state.dashboard.carriedTransactions && state.dashboard.carriedTransactions.length > 0)
+        ? state.dashboard.carriedTransactions
+        : (state.dashboard.outgoing || []).filter(t => t.is_carried_forward || (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row))));
       const carriedSum = carried.reduce((s, t) => s + t.amount, 0);
       if (!carried.length) return '';
       return `
@@ -1538,7 +1543,9 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
     </div>
   `;
 
-  const isCarried = state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row) && i.kind === t.kind);
+  const isCarried = (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row) && i.kind === t.kind)) ||
+    (!!t.is_carried_forward) ||
+    (state.dashboard?.carriedTransactions && state.dashboard.carriedTransactions.some(i => String(i.row) === String(t.row)));
   const pinHtml = `<button class="carry-pin ${isCarried ? 'active' : ''}" title="${isCarried ? 'Carried to next cycle' : 'Carry to next cycle'}" onclick="toggleCarryPin(event, '${t.row}', '${t.kind}')">📌</button>`;
 
   return `
@@ -1568,18 +1575,31 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
   `;
 }
 
-function toggleCarryPin(e, row, kind) {
+async function toggleCarryPin(e, row, kind) {
   e.stopPropagation();
-  const idx = state.carryItems.findIndex(i => String(i.row) === String(row) && i.kind === kind);
-  if (idx >= 0) {
-    state.carryItems.splice(idx, 1);
-    toast('Unpinned from next cycle', 'info');
-  } else {
-    state.carryItems.push({ row, kind });
+  const isCurrentlyCarried = (state.carryItems && state.carryItems.some(i => String(i.row) === String(row) && i.kind === kind)) ||
+    (state.dashboard?.carriedTransactions && state.dashboard.carriedTransactions.some(i => String(i.row) === String(row)));
+  
+  const willCarry = !isCurrentlyCarried;
+  
+  if (willCarry) {
+    if (!state.carryItems.some(i => String(i.row) === String(row))) {
+      state.carryItems.push({ row, kind });
+    }
     toast('📌 Marked to carry over to next cycle', 'success');
+  } else {
+    state.carryItems = state.carryItems.filter(i => !(String(i.row) === String(row) && i.kind === kind));
+    toast('Unpinned from next cycle', 'info');
   }
   sessionStorage.setItem('carryItems', JSON.stringify(state.carryItems));
   renderAll();
+
+  try {
+    await server('toggleCarryForward', [row, willCarry]);
+    loadData(true);
+  } catch(err) {
+    console.error('Failed to persist carry status:', err);
+  }
 }
 
 function populateCategoryDropdowns() {

@@ -260,6 +260,24 @@ export async function GET(req) {
       });
     }
 
+    const carriedTransactions = allTransactions
+      .filter(t => t.is_carried_forward)
+      .map(t => {
+        const catName = (t.category_id && catMap[t.category_id])
+          ? catMap[t.category_id].name
+          : (t.categories ? (Array.isArray(t.categories) ? t.categories[0]?.name : t.categories.name) : 'Uncategorized');
+        return {
+          row: t.id,
+          kind: t.kind,
+          source: t.source_or_merchant,
+          date: new Date(t.transaction_date).toLocaleString(),
+          amount: Number(t.amount),
+          note: t.note,
+          category: catName,
+          is_carried_forward: true
+        };
+      });
+
     return NextResponse.json({
       cycle: {
         label: targetBounds.label,
@@ -278,7 +296,8 @@ export async function GET(req) {
         todayTotal,
         todayIncome,
         historyCycles: historicalCycles,
-        debtSummary
+        debtSummary,
+        carriedTransactions
       },
       budget: {
         metrics: {

@@ -72,6 +72,13 @@ export async function POST(req) {
         return NextResponse.json({ success: true });
       }
 
+      case 'toggleCarryForward': {
+        const [id, isCarried] = args;
+        const { error } = await supabase.from('transactions').update({ is_carried_forward: !!isCarried }).eq('id', id);
+        if (error) throw error;
+        return NextResponse.json({ success: true });
+      }
+
       case 'addManualExpense': {
         const [amount, catName, note, merchant, isCarried] = args;
         const catId = await getCategoryIdByName(catName);
