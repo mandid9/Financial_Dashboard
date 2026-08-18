@@ -82,6 +82,7 @@ export async function evaluateAndDispatchTriggers(forceDaily = false) {
 
     let uncatCount = 0;
     transactions.forEach(t => {
+      if (t.is_carried_forward) return;
       if (t.kind === 'outgoing') {
         totalActual += Number(t.amount);
         if (t.category_id && catMap[t.category_id]) {

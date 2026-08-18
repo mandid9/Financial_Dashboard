@@ -942,7 +942,7 @@ function renderHome() {
   drawChart();
   
   // Uncategorized / Carried items
-  const uncatList = state.dashboard.outgoing.filter(t => !t.category || t.category.trim() === '' || t.category === 'Uncategorized');
+  const uncatList = state.dashboard.outgoing.filter(t => (!t.category || t.category.trim() === '' || t.category === 'Uncategorized') && !t.is_carried_forward);
   const headerEl = document.getElementById('home-attention-header');
   const listEl = document.getElementById('home-uncategorized-list');
 

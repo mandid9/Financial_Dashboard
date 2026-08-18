@@ -76,7 +76,7 @@ export async function GET(req) {
 
     allTransactions.forEach(t => {
       const tDate = new Date(t.transaction_date);
-      const inCurrentCycle = tDate >= currentBounds.start && tDate < currentBounds.end;
+      const inCurrentCycle = tDate >= currentBounds.start && tDate < currentBounds.end && !t.is_carried_forward;
 
       if (inCurrentCycle && t.kind === 'outgoing') {
         // If assigned to Debt category -> repayment toward current debt
@@ -135,13 +135,30 @@ export async function GET(req) {
     allTransactions.forEach(t => {
       const tDate = new Date(t.transaction_date);
       const isToday = t.transaction_date.startsWith(todayStr);
+      const isCarried = !!t.is_carried_forward;
 
       let inScope = false;
-      if (isNext || isCurrent) {
-        // For current and next cycles, include transactions in range or marked as carried forward
-        inScope = (tDate >= targetBounds.start && tDate < targetBounds.end) || !!t.is_carried_forward;
+      let countInCalculations = false;
+
+      if (isCurrent) {
+        // Current cycle: transactions in date range appear in list
+        if (tDate >= targetBounds.start && tDate < targetBounds.end) {
+          inScope = true;
+          // ISOLATE carried over transactions: they do NOT count in current cycle income, spend, balance, or category actuals!
+          countInCalculations = !isCarried;
+        }
+      } else if (isNext) {
+        // Next cycle: future transactions OR carried transactions are in scope AND counted in next cycle calculations!
+        if ((tDate >= targetBounds.start && tDate < targetBounds.end) || isCarried) {
+          inScope = true;
+          countInCalculations = true;
+        }
       } else {
-        inScope = tDate >= targetBounds.start && tDate < targetBounds.end;
+        // Historical archives: only transactions that occurred in that cycle and were not carried away
+        if (tDate >= targetBounds.start && tDate < targetBounds.end && !isCarried) {
+          inScope = true;
+          countInCalculations = true;
+        }
       }
 
       if (inScope) {
@@ -150,15 +167,17 @@ export async function GET(req) {
             ? catMap[t.category_id].name
             : (t.categories ? (Array.isArray(t.categories) ? t.categories[0]?.name : t.categories.name) : null);
 
-          if (t.category_id && catMap[t.category_id]) {
-            catMap[t.category_id].actual += Number(t.amount);
-            catMap[t.category_id].remaining -= Number(t.amount);
-          } else {
-            uncatActual += Number(t.amount);
-          }
+          if (countInCalculations) {
+            if (t.category_id && catMap[t.category_id]) {
+              catMap[t.category_id].actual += Number(t.amount);
+              catMap[t.category_id].remaining -= Number(t.amount);
+            } else {
+              uncatActual += Number(t.amount);
+            }
 
-          totalActual += Number(t.amount);
-          if (isCurrent && isToday) todayTotal += Number(t.amount);
+            totalActual += Number(t.amount);
+            if (isCurrent && isToday) todayTotal += Number(t.amount);
+          }
 
           outgoing.push({
             row: t.id,
@@ -168,11 +187,13 @@ export async function GET(req) {
             amount: Number(t.amount),
             note: t.note,
             category: catName,
-            is_carried_forward: !!t.is_carried_forward
+            is_carried_forward: isCarried
           });
         } else {
-          totalIncome += Number(t.amount);
-          if (isCurrent && isToday) todayIncome += Number(t.amount);
+          if (countInCalculations) {
+            totalIncome += Number(t.amount);
+            if (isCurrent && isToday) todayIncome += Number(t.amount);
+          }
 
           incoming.push({
             row: t.id,
@@ -181,7 +202,7 @@ export async function GET(req) {
             date: new Date(t.transaction_date).toLocaleString(),
             amount: Number(t.amount),
             note: t.note,
-            is_carried_forward: !!t.is_carried_forward
+            is_carried_forward: isCarried
           });
         }
       }
