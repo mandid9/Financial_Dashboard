@@ -2,6 +2,25 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
 
+// GET /api/webhook - Quick diagnostic test in browser
+export async function GET(req) {
+  const rawExpected = process.env.WEBHOOK_SECRET;
+  const cleanExpected = rawExpected ? rawExpected.trim().replace(/^["']|["']$/g, '') : '';
+  
+  if (cleanExpected) {
+    const url = new URL(req.url);
+    const rawQuery = url.searchParams.get('secret') || '';
+    const cleanQuery = rawQuery.trim().replace(/^["']|["']$/g, '');
+    const decodedQuery = decodeURIComponent(rawQuery).trim().replace(/^["']|["']$/g, '');
+
+    if (cleanQuery !== cleanExpected && decodedQuery !== cleanExpected) {
+      return new NextResponse('❌ Unauthorized: Secret mismatch. The secret in URL does not match WEBHOOK_SECRET.', { status: 401 });
+    }
+  }
+
+  return new NextResponse('✅ Webhook endpoint is active and ready to receive SMS transactions!', { status: 200 });
+}
+
 export async function POST(req) {
   try {
     // 1. Optional Secret Verification (MacroDroid compatible)
@@ -24,9 +43,24 @@ export async function POST(req) {
     }
 
     // 2. Read and bound body payload
-    const body = await req.text();
-    if (!body || body.trim() === '') return new NextResponse('No message', { status: 400 });
-    if (body.length > 4096) return new NextResponse('Payload too large', { status: 413 });
+    const rawBody = await req.text();
+    if (!rawBody || rawBody.trim() === '') return new NextResponse('No message', { status: 400 });
+    if (rawBody.length > 4096) return new NextResponse('Payload too large', { status: 413 });
+
+    // 3. Unwrap JSON or Form data if sent by MacroDroid
+    let body = rawBody;
+    try {
+      const json = JSON.parse(rawBody);
+      if (json && typeof json === 'object') {
+        body = json.message || json.body || json.text || json.sms || json.content || rawBody;
+      }
+    } catch (e) {
+      // Not JSON, check if application/x-www-form-urlencoded (e.g. body=... or message=...)
+      if (rawBody.startsWith('body=') || rawBody.startsWith('message=')) {
+        const params = new URLSearchParams(rawBody);
+        body = params.get('body') || params.get('message') || rawBody;
+      }
+    }
 
     const now = new Date().toISOString();
 
