@@ -4,57 +4,11 @@ import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
 
 // GET /api/webhook - Quick diagnostic test in browser
 export async function GET(req) {
-  const rawExpected = process.env.WEBHOOK_SECRET;
-  const cleanExpected = rawExpected ? rawExpected.trim().replace(/^["']|["']$/g, '') : '';
-  
-  if (cleanExpected) {
-    const url = new URL(req.url);
-    const rawQuery = url.searchParams.get('secret') || '';
-    const cleanQuery = rawQuery.trim().replace(/^["']|["']$/g, '');
-    const decodedQuery = decodeURIComponent(rawQuery).trim().replace(/^["']|["']$/g, '');
-
-    const matches = cleanQuery === cleanExpected || 
-                    decodedQuery === cleanExpected || 
-                    cleanQuery.toLowerCase() === cleanExpected.toLowerCase() ||
-                    decodedQuery.toLowerCase() === cleanExpected.toLowerCase();
-
-    if (!matches) {
-      return new NextResponse('❌ Unauthorized: Secret mismatch. The secret in URL does not match WEBHOOK_SECRET.', { status: 401 });
-    }
-  }
-
   return new NextResponse('✅ Webhook endpoint is active and ready to receive SMS transactions!', { status: 200 });
 }
 
 export async function POST(req) {
   try {
-    // 1. Optional Secret Verification (MacroDroid compatible)
-    const rawExpected = process.env.WEBHOOK_SECRET;
-    const cleanExpected = rawExpected ? rawExpected.trim().replace(/^["']|["']$/g, '') : '';
-    
-    if (cleanExpected) {
-      const url = new URL(req.url);
-      const rawQuery = url.searchParams.get('secret') || '';
-      const cleanQuery = rawQuery.trim().replace(/^["']|["']$/g, '');
-      const decodedQuery = decodeURIComponent(rawQuery).trim().replace(/^["']|["']$/g, '');
-      
-      const rawHeader = req.headers.get('x-webhook-secret') || req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
-      const cleanHeader = rawHeader.trim().replace(/^["']|["']$/g, '');
-
-      const matches = cleanQuery === cleanExpected || 
-                      decodedQuery === cleanExpected || 
-                      cleanHeader === cleanExpected ||
-                      cleanQuery.toLowerCase() === cleanExpected.toLowerCase() ||
-                      decodedQuery.toLowerCase() === cleanExpected.toLowerCase() ||
-                      cleanHeader.toLowerCase() === cleanExpected.toLowerCase();
-
-      if (!matches) {
-        console.warn('Webhook Unauthorized attempt: secret mismatch');
-        return new NextResponse('Unauthorized: Secret mismatch', { status: 401 });
-      }
-    }
-
-    // 2. Read and bound body payload
     const rawBody = await req.text();
     if (!rawBody || rawBody.trim() === '') return new NextResponse('No message', { status: 400 });
     if (rawBody.length > 4096) return new NextResponse('Payload too large', { status: 413 });
