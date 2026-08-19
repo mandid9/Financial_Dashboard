@@ -13,7 +13,12 @@ export async function GET(req) {
     const cleanQuery = rawQuery.trim().replace(/^["']|["']$/g, '');
     const decodedQuery = decodeURIComponent(rawQuery).trim().replace(/^["']|["']$/g, '');
 
-    if (cleanQuery !== cleanExpected && decodedQuery !== cleanExpected) {
+    const matches = cleanQuery === cleanExpected || 
+                    decodedQuery === cleanExpected || 
+                    cleanQuery.toLowerCase() === cleanExpected.toLowerCase() ||
+                    decodedQuery.toLowerCase() === cleanExpected.toLowerCase();
+
+    if (!matches) {
       return new NextResponse('❌ Unauthorized: Secret mismatch. The secret in URL does not match WEBHOOK_SECRET.', { status: 401 });
     }
   }
@@ -36,7 +41,14 @@ export async function POST(req) {
       const rawHeader = req.headers.get('x-webhook-secret') || req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
       const cleanHeader = rawHeader.trim().replace(/^["']|["']$/g, '');
 
-      if (cleanQuery !== cleanExpected && decodedQuery !== cleanExpected && cleanHeader !== cleanExpected) {
+      const matches = cleanQuery === cleanExpected || 
+                      decodedQuery === cleanExpected || 
+                      cleanHeader === cleanExpected ||
+                      cleanQuery.toLowerCase() === cleanExpected.toLowerCase() ||
+                      decodedQuery.toLowerCase() === cleanExpected.toLowerCase() ||
+                      cleanHeader.toLowerCase() === cleanExpected.toLowerCase();
+
+      if (!matches) {
         console.warn('Webhook Unauthorized attempt: secret mismatch');
         return new NextResponse('Unauthorized: Secret mismatch', { status: 401 });
       }
