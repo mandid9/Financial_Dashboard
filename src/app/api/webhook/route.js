@@ -76,17 +76,37 @@ export async function POST(req) {
 
     const now = new Date().toISOString();
 
-    if (/Reversed|Refunded|استرجاع|الغاء/i.test(body)) return await handleReversal(body, now);
-    if (/IPN transfer sent|transfer sent|تم تحويل|خصم|شراء|(Debit|Credit)\s+Card|Card ending|Purchase with|POS purchase|Online transaction|بطاقة|سحب/i.test(body)) return await logExpense(body, now);
-    if (/IPN transfer re(ceived|cieved)|transfer received|تم استلام|تم استحقاق|تم الايداع|إيداع/i.test(body)) return await logIncome(body, now, 'IPN Received', '');
-    if (/اضافة راتبك|salary|راتب/i.test(body)) return await logSalary(body, now);
-
-    // Fallback: If amount is present in SMS, log it as an expense rather than dropping it
-    const fallbackAmount = parseEgp(body);
-    if (fallbackAmount && fallbackAmount > 0) {
-      return await logExpense(body, now);
+    // 1. Salary Deposit (Arabic)
+    if (/اضافة راتبك|إضافة راتبك/i.test(body)) {
+      return await handleSalarySms(body, now);
     }
 
+    // 2. Instapay Transfer Sent (Outgoing Expense)
+    if (/IPN transfer sent/i.test(body)) {
+      return await handleInstapaySent(body, now);
+    }
+
+    // 3. Instapay Transfer Received (Incoming Income)
+    if (/IPN transfer re(ceived|cieved)/i.test(body)) {
+      return await handleInstapayReceived(body, now);
+    }
+
+    // 4. Debit Card Transaction (Outgoing Expense)
+    if (/Your Debit Card/i.test(body)) {
+      return await handleDebitCardSms(body, now);
+    }
+
+    // 5. Credit Card Transaction (Outgoing Expense / Debt)
+    if (/Your Credit Card/i.test(body)) {
+      return await handleCreditCardSms(body, now);
+    }
+
+    // Optional: Reversals / Refunds
+    if (/Reversed|Refunded|استرجاع/i.test(body)) {
+      return await handleReversal(body, now);
+    }
+
+    // Strictly ignore all other messages (no noise)
     return new NextResponse('Ignored: No pattern matched', { status: 200 });
   } catch (err) {
     console.error('Webhook Error:', err);
@@ -94,16 +114,118 @@ export async function POST(req) {
   }
 }
 
-async function logExpense(message, time) {
-  const amount = parseEgp(message) || 0;
-  if (amount <= 0) {
-    return new NextResponse('Could not parse amount from expense message', { status: 400 });
-  }
-  
-  const source = detectOutgoingSource(message);
-  const merchant = ((message.match(/@([^,]+),/)||[])[1] || (message.match(/(?:at|لدى|عند)\s+([^,.\n]+)/i)||[])[1] || '').trim();
+// Handler 1: Salary
+async function handleSalarySms(message, time) {
+  // Extract amount after بمبلغ, e.g. "بمبلغ \n 24980EGP"
+  const match = message.match(/بمبلغ\s*([\d,.]+)\s*EGP/i) || message.match(/([\d,.]+)\s*EGP/i);
+  if (!match) return new NextResponse('Could not parse salary amount', { status: 400 });
+  const amount = parseFloat(match[1].replace(/,/g, ''));
+  if (isNaN(amount) || amount <= 0) return new NextResponse('Invalid salary amount', { status: 400 });
 
-  // Check duplicate (last 10 transactions in 5 mins)
+  const { error } = await supabase
+    .from('transactions')
+    .insert([{
+      kind: 'incoming',
+      amount: amount,
+      source_or_merchant: 'Bank Transfer \u2014 Salary',
+      note: 'Paycheck Deposit',
+      transaction_date: time
+    }]);
+
+  if (error) throw error;
+
+  await sendPushToAll({
+    title: `🎉 Salary Received: EGP ${Number(amount).toLocaleString()}`,
+    body: `Paycheck deposited into your account.`,
+    icon: '/icon.svg',
+    url: '/index.html'
+  }).catch(e => console.warn('Push error:', e));
+
+  return new NextResponse('Success: Salary logged', { status: 200 });
+}
+
+// Handler 2: Instapay Transfer Sent
+async function handleInstapaySent(message, time) {
+  // "amount of EGP 180.00 from 8472"
+  const amtMatch = message.match(/amount of EGP\s*([\d,.]+)/i) || message.match(/EGP\s*([\d,.]+)/i);
+  if (!amtMatch) return new NextResponse('Could not parse Instapay sent amount', { status: 400 });
+  const amount = parseFloat(amtMatch[1].replace(/,/g, ''));
+
+  const fromMatch = message.match(/from\s+([^\s]+)/i);
+  const fromAcc = fromMatch ? ` (${fromMatch[1]})` : '';
+  const source = `Instapay Sent${fromAcc}`;
+
+  return await insertOutgoing(amount, source, null, time);
+}
+
+// Handler 3: Instapay Transfer Received
+async function handleInstapayReceived(message, time) {
+  // "amount of EGP 180.00 from 8472"
+  const amtMatch = message.match(/amount of EGP\s*([\d,.]+)/i) || message.match(/EGP\s*([\d,.]+)/i);
+  if (!amtMatch) return new NextResponse('Could not parse Instapay received amount', { status: 400 });
+  const amount = parseFloat(amtMatch[1].replace(/,/g, ''));
+
+  const fromMatch = message.match(/from\s+([^\s]+)/i);
+  const fromAcc = fromMatch ? ` from ${fromMatch[1]}` : '';
+  const source = `Instapay Received${fromAcc}`;
+
+  const { error } = await supabase
+    .from('transactions')
+    .insert([{
+      kind: 'incoming',
+      amount: amount,
+      source_or_merchant: source,
+      note: 'IPN Transfer',
+      transaction_date: time
+    }]);
+
+  if (error) throw error;
+
+  await sendPushToAll({
+    title: `💰 EGP ${Number(amount).toLocaleString()} Income Received`,
+    body: `${source}`,
+    icon: '/icon.svg',
+    url: '/index.html'
+  }).catch(e => console.warn('Push error:', e));
+
+  return new NextResponse('Success: Instapay income logged', { status: 200 });
+}
+
+// Handler 4: Debit Card
+async function handleDebitCardSms(message, time) {
+  // "Your Debit Card **4739 had a Successful transaction of EGP 79.00 @MOHAMED ABD ELSATTAR ABD"
+  const cardMatch = message.match(/Debit Card\s*([^\s]+)/i);
+  const cardStr = cardMatch ? `Debit Card ${cardMatch[1]}` : 'Debit Card';
+
+  const amtMatch = message.match(/transaction of EGP\s*([\d,.]+)/i) || message.match(/EGP\s*([\d,.]+)/i);
+  if (!amtMatch) return new NextResponse('Could not parse Debit card amount', { status: 400 });
+  const amount = parseFloat(amtMatch[1].replace(/,/g, ''));
+
+  const merchMatch = message.match(/@([^,]+),?/);
+  const merchant = merchMatch ? merchMatch[1].trim() : cardStr;
+
+  return await insertOutgoing(amount, merchant, cardStr, time);
+}
+
+// Handler 5: Credit Card
+async function handleCreditCardSms(message, time) {
+  // "Your Credit Card ****9350 had a Successful transaction of EGP 78 @MOHAMED ABD ELSATTAR ABD"
+  const cardMatch = message.match(/Credit Card\s*([^\s]+)/i);
+  const cardStr = cardMatch ? `Credit Card ${cardMatch[1]}` : 'Credit Card';
+
+  const amtMatch = message.match(/transaction of EGP\s*([\d,.]+)/i) || message.match(/EGP\s*([\d,.]+)/i);
+  if (!amtMatch) return new NextResponse('Could not parse Credit card amount', { status: 400 });
+  const amount = parseFloat(amtMatch[1].replace(/,/g, ''));
+
+  const merchMatch = message.match(/@([^,]+),?/);
+  const merchant = merchMatch ? merchMatch[1].trim() : cardStr;
+
+  return await insertOutgoing(amount, merchant, cardStr, time);
+}
+
+// Helper: Insert Outgoing Expense & Dispatch Alerts
+async function insertOutgoing(amount, sourceOrMerchant, note, time) {
+  // Duplicate check (within 5 min window)
   const { data: recent } = await supabase
     .from('transactions')
     .select('id, amount, transaction_date')
@@ -125,37 +247,7 @@ async function logExpense(message, time) {
     .insert([{
       kind: 'outgoing',
       amount: amount,
-      source_or_merchant: merchant || source,
-      note: merchant ? '' : null,
-      transaction_date: time
-    }]);
-
-  if (error) throw error;
-
-  // Instant notification for logged transaction
-  await sendPushToAll({
-    title: `💸 EGP ${Number(amount).toLocaleString()} Spent`,
-    body: `${merchant || source} \u2022 Needs category. Tap to review.`,
-    icon: '/icon.svg',
-    url: '/index.html'
-  }).catch(e => console.warn('Push error:', e));
-
-  // Evaluate budget rules
-  await evaluateAndDispatchTriggers(false).catch(e => console.warn('Trigger error:', e));
-
-  return new NextResponse('Success', { status: 200 });
-}
-
-async function logIncome(message, time, type, note) {
-  const amount = parseEgp(message);
-  if (!amount || amount <= 0) return new NextResponse('Could not parse amount', { status: 400 });
-
-  const { error } = await supabase
-    .from('transactions')
-    .insert([{
-      kind: 'incoming',
-      amount: amount,
-      source_or_merchant: type,
+      source_or_merchant: sourceOrMerchant,
       note: note,
       transaction_date: time
     }]);
@@ -163,46 +255,23 @@ async function logIncome(message, time, type, note) {
   if (error) throw error;
 
   await sendPushToAll({
-    title: `💰 EGP ${Number(amount).toLocaleString()} Income Received`,
-    body: `${type} \u2022 ${note || 'Income logged'}`,
+    title: `💸 EGP ${Number(amount).toLocaleString()} Spent`,
+    body: `${sourceOrMerchant} \u2022 Needs category. Tap to review.`,
     icon: '/icon.svg',
     url: '/index.html'
   }).catch(e => console.warn('Push error:', e));
 
-  return new NextResponse('Success', { status: 200 });
+  await evaluateAndDispatchTriggers(false).catch(e => console.warn('Trigger error:', e));
+
+  return new NextResponse('Success: Expense logged', { status: 200 });
 }
 
-async function logSalary(message, time) {
-  const amount = parseEgp(message);
-  if (!amount || amount <= 0) return new NextResponse('Could not parse salary', { status: 400 });
-  
-  const { error } = await supabase
-    .from('transactions')
-    .insert([{
-      kind: 'incoming',
-      amount: Number(amount),
-      source_or_merchant: 'Bank Transfer \u2014 Salary',
-      note: 'Paycheck',
-      transaction_date: time
-    }]);
-
-  if (error) throw error;
-
-  await sendPushToAll({
-    title: `🎉 Salary Received: EGP ${Number(amount).toLocaleString()}`,
-    body: `Paycheck deposited into your account.`,
-    icon: '/icon.svg',
-    url: '/index.html'
-  }).catch(e => console.warn('Push error:', e));
-
-  return new NextResponse('Success', { status: 200 });
-}
-
+// Helper: Refund / Reversal
 async function handleReversal(message, time) {
-  const amount = parseEgp(message);
-  if (!amount || amount <= 0) return new NextResponse('Could not parse reversal', { status: 400 });
+  const amtMatch = message.match(/EGP\s*([\d,.]+)/i) || message.match(/([\d,.]+)\s*EGP/i);
+  if (!amtMatch) return new NextResponse('Could not parse reversal amount', { status: 400 });
+  const amount = parseFloat(amtMatch[1].replace(/,/g, ''));
 
-  // Find exact match
   const { data: matches } = await supabase
     .from('transactions')
     .select('id, note')
@@ -220,7 +289,17 @@ async function handleReversal(message, time) {
       .eq('id', match.id);
   }
 
-  const res = await logIncome(message, time, 'Reversal/Refund', matches && matches.length > 0 ? 'Original matched' : '');
+  const { error } = await supabase
+    .from('transactions')
+    .insert([{
+      kind: 'incoming',
+      amount: amount,
+      source_or_merchant: 'Reversal / Refund',
+      note: matches && matches.length > 0 ? 'Original matched' : 'Reversed transaction',
+      transaction_date: time
+    }]);
+
+  if (error) throw error;
 
   await sendPushToAll({
     title: `🔄 Refund / Reversal: EGP ${Number(amount).toLocaleString()}`,
@@ -229,28 +308,5 @@ async function handleReversal(message, time) {
     url: '/index.html'
   }).catch(e => console.warn('Push error:', e));
 
-  return res;
-}
-
-function parseEgp(t) {
-  const str = String(t || '');
-  let match = str.match(/EGP\s*([\d,.]+)/i);
-  if (!match) match = str.match(/([\d,.]+)\s*EGP/i);
-  if (!match) match = str.match(/LE\s*([\d,.]+)/i);
-  if (!match) match = str.match(/([\d,.]+)\s*LE/i);
-  if (!match) match = str.match(/([\d,.]+)\s*(?:ج\.م|جنيه)/);
-  if (!match) match = str.match(/(?:مبلغ|قيمة|بمبلغ|بقيمة|amount)\s*:?\s*([\d,.]+)/i);
-  
-  if (match) {
-    const val = parseFloat(match[1].replace(/,/g, ''));
-    if (!isNaN(val) && val > 0) return val;
-  }
-  return null;
-}
-
-function detectOutgoingSource(message) {
-  if (/IPN transfer sent|Instapay|تحويل/i.test(message)) return 'Instapay Transfer';
-  if (/Debit\s+Card|خصم مباشر/i.test(message)) return 'Debit Card';
-  if (/Credit\s+Card|ائتمان/i.test(message)) return 'Credit Card';
-  return 'Outgoing Expense';
+  return new NextResponse('Success: Reversal logged', { status: 200 });
 }
