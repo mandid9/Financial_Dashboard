@@ -5,13 +5,21 @@ import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
 export async function POST(req) {
   try {
     // 1. Optional Secret Verification (MacroDroid compatible)
-    const expectedSecret = process.env.WEBHOOK_SECRET;
-    if (expectedSecret) {
+    const rawExpected = process.env.WEBHOOK_SECRET;
+    const cleanExpected = rawExpected ? rawExpected.trim().replace(/^["']|["']$/g, '') : '';
+    
+    if (cleanExpected) {
       const url = new URL(req.url);
-      const querySecret = url.searchParams.get('secret');
-      const headerSecret = req.headers.get('x-webhook-secret') || req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-      if (querySecret !== expectedSecret && headerSecret !== expectedSecret) {
-        return new NextResponse('Unauthorized', { status: 401 });
+      const rawQuery = url.searchParams.get('secret') || '';
+      const cleanQuery = rawQuery.trim().replace(/^["']|["']$/g, '');
+      const decodedQuery = decodeURIComponent(rawQuery).trim().replace(/^["']|["']$/g, '');
+      
+      const rawHeader = req.headers.get('x-webhook-secret') || req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
+      const cleanHeader = rawHeader.trim().replace(/^["']|["']$/g, '');
+
+      if (cleanQuery !== cleanExpected && decodedQuery !== cleanExpected && cleanHeader !== cleanExpected) {
+        console.warn('Webhook Unauthorized attempt: secret mismatch');
+        return new NextResponse('Unauthorized: Secret mismatch', { status: 401 });
       }
     }
 
