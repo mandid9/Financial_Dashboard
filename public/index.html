@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <base target="_top">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
   <meta name="theme-color" content="#0f1117">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -234,6 +234,8 @@
       transition: opacity 0.3s ease;
     }
     .modal-backdrop.open { opacity: 1; pointer-events: auto; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--primary-hover); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.01ms !important; } }
     
     .modal {
       background: var(--surface);
@@ -617,7 +619,7 @@
 <!-- MODALS -->
 
 <!-- Manual Entry Modal -->
-<div id="modal-manual" class="modal-backdrop" onclick="closeModal(event, 'modal-manual')">
+<div id="modal-manual" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true" onclick="closeModal(event, 'modal-manual')">
   <div class="modal">
     <div class="modal-header">
       <h2>Add Transaction</h2>
@@ -1139,7 +1141,7 @@ document.getElementById('chart-tooltip').style.opacity = 0;
 
 function openSummaryModal() {
   renderSummaryReport();
-  document.getElementById('modal-summary').classList.add('open');
+  openModal('modal-summary');
 }
 
 function renderSummaryReport() {
@@ -1734,7 +1736,7 @@ let pendingDebtAction = null;
 function promptDebtChoice(amount, onResolve) {
   document.getElementById('debt-choice-amount').textContent = fmt(amount);
   pendingDebtAction = onResolve;
-  document.getElementById('modal-debt-choice').classList.add('open');
+  openModal('modal-debt-choice');
 }
 
 async function resolveDebtChoice(choice) {
@@ -1843,13 +1845,64 @@ function exportCSV() {
   document.body.removeChild(link);
 }
 
-// --- 6. MODALS & FORMS ---
+
+let activeModalId = null;
+let activeModalTrigger = null;
+
+function openModal(id) {
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  activeModalId = id;
+  activeModalTrigger = document.activeElement;
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  const focusable = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  if (focusable) setTimeout(() => focusable.focus(), 0);
+}
+
 function closeModal(e, id) {
   if (e.target.id === id) closeModalForce(id);
 }
+
 function closeModalForce(id) {
-  document.getElementById(id).classList.remove('open');
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+  if (activeModalId === id) {
+    activeModalId = null;
+    if (activeModalTrigger && typeof activeModalTrigger.focus === 'function') activeModalTrigger.focus();
+    activeModalTrigger = null;
+  }
 }
+
+document.addEventListener('keydown', (event) => {
+  const modal = activeModalId ? document.getElementById(activeModalId) : document.querySelector('.modal-backdrop.open');
+  if (!modal) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeModalForce(modal.id);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [...modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(el => !el.disabled && el.offsetParent !== null);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+
+document.querySelectorAll('.modal-close').forEach((button) => {
+  if (!button.getAttribute('aria-label')) button.setAttribute('aria-label', 'Close dialog');
+});
+
+// --- 6. MODALS & FORMS ---
 
 function openManualEntryModal() {
   document.getElementById('manual-amount').value = '';
@@ -1861,7 +1914,7 @@ function openManualEntryModal() {
   if (debtGroup) debtGroup.style.display = 'none';
   const carryEl = document.getElementById('manual-carry');
   if (carryEl) carryEl.checked = false;
-  document.getElementById('modal-manual').classList.add('open');
+  openModal('modal-manual');
   setManualType('expense');
 }
 
@@ -1929,7 +1982,7 @@ function openSplitModal(row, totalAmount) {
   addSplitPart();
   
   updateSplitTotal();
-  document.getElementById('modal-split').classList.add('open');
+  openModal('modal-split');
 }
 
 function addSplitPart() {
@@ -2015,7 +2068,7 @@ async function submitSplit() {
 function openAddCategoryModal() {
   document.getElementById('new-cat-name').value = '';
   document.getElementById('new-cat-planned').value = '';
-  document.getElementById('modal-add-category').classList.add('open');
+  openModal('modal-add-category');
 }
 
 async function submitAddCategory() {
