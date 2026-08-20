@@ -210,6 +210,7 @@ export async function GET(req) {
             kind: 'outgoing',
             source: t.source_or_merchant,
             date: new Date(t.transaction_date).toLocaleString(),
+            timestamp: t.transaction_date,
             amount: Number(t.amount),
             note: t.note,
             category: catName,
@@ -325,7 +326,36 @@ export async function GET(req) {
         };
       });
 
-    const historyItems = [...outgoing, ...incoming].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const requestedHistoryFilter = searchParams.get('historyFilter') || 'all';
+    const historyFilter = ['all', 'today', 'week', 'month'].includes(requestedHistoryFilter) ? requestedHistoryFilter : 'all';
+    const historySearch = (searchParams.get('historySearch') || '').trim().toLowerCase();
+    let filteredHistoryItems = [...outgoing, ...incoming];
+    const historyNow = new Date();
+    if (historyFilter === 'today') {
+      filteredHistoryItems = filteredHistoryItems.filter(item => {
+        const date = new Date(item.timestamp);
+        return date.toDateString() === historyNow.toDateString();
+      });
+    } else if (historyFilter === 'week') {
+      const startOfWeek = new Date(historyNow);
+      startOfWeek.setHours(0, 0, 0, 0);
+      startOfWeek.setDate(historyNow.getDate() - historyNow.getDay());
+      filteredHistoryItems = filteredHistoryItems.filter(item => new Date(item.timestamp) >= startOfWeek);
+    } else if (historyFilter === 'month') {
+      let month = historyNow.getMonth();
+      let year = historyNow.getFullYear();
+      if (historyNow.getDate() < 20) month -= 1;
+      if (month < 0) { month = 11; year -= 1; }
+      const startOfMonth = new Date(year, month, 20);
+      filteredHistoryItems = filteredHistoryItems.filter(item => new Date(item.timestamp) >= startOfMonth);
+    }
+    if (historySearch) {
+      filteredHistoryItems = filteredHistoryItems.filter(item => {
+        const haystack = [item.source, item.note, item.category, item.amount].map(value => String(value || '').toLowerCase());
+        return haystack.some(value => value.includes(historySearch));
+      });
+    }
+    const historyItems = filteredHistoryItems.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     const historyTotal = historyItems.length;
     const historyStart = (historyPage - 1) * historyPageSize;
     const historyPageItems = historyItems.slice(historyStart, historyStart + historyPageSize);

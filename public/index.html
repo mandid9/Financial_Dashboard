@@ -872,10 +872,17 @@ function server(fnName, args = [], onSuccess = null, loadingMsg = null) {
 async function loadData(silent = false) {
   if (state.isLoading) return;
   state.isLoading = true;
+  const historyResultsEl = document.getElementById('history-results');
+  if (historyResultsEl) historyResultsEl.setAttribute('aria-busy', 'true');
+  const historyLoadMoreEl = document.getElementById('history-load-more');
+  if (historyLoadMoreEl) {
+    historyLoadMoreEl.disabled = true;
+    if (state.historyAppend) historyLoadMoreEl.textContent = 'Loading history...';
+  }
   
   try {
     if (!state.historyAppend) state.historyPage = 1;
-    const res = await fetch('/api/dashboard?cycleOffset=' + state.cycleOffset + '&historyPage=' + state.historyPage + '&historyPageSize=' + state.historyPageSize + '&t=' + Date.now(), { cache: 'no-store' });
+    const res = await fetch('/api/dashboard?cycleOffset=' + state.cycleOffset + '&historyPage=' + state.historyPage + '&historyPageSize=' + state.historyPageSize + '&historyFilter=' + encodeURIComponent(state.historyFilter) + '&historySearch=' + encodeURIComponent(state.historySearch) + '&t=' + Date.now(), { cache: 'no-store' });
     if (res.status === 401) { showLogin('Your session has expired. Please sign in again.'); return; }
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -900,6 +907,8 @@ async function loadData(silent = false) {
     if (!silent) toast('Error: ' + (e.message || e), 'error');
   } finally {
     state.isLoading = false;
+    const historyResultsEl = document.getElementById('history-results');
+    if (historyResultsEl) historyResultsEl.setAttribute('aria-busy', 'false');
   }
   return false;
 }
@@ -1471,7 +1480,9 @@ function renderHistory() {
   if (resultsEl) {
     const total = outList.length + incList.length;
     const filterText = state.historyFilter === 'all' ? 'All history' : state.historyFilter.charAt(0).toUpperCase() + state.historyFilter.slice(1);
-    resultsEl.textContent = total + ' transaction' + (total === 1 ? '' : 's') + ' - ' + filterText + (state.historySearch ? ' - Search: ' + state.historySearch : '');
+    const historyMeta = state.dashboard.history || {};
+    const totalText = historyMeta.total > total ? total + ' of ' + historyMeta.total : String(total);
+    resultsEl.textContent = totalText + ' transaction' + (total === 1 ? '' : 's') + ' - ' + filterText + (state.historySearch ? ' - Search: ' + state.historySearch : '');
   }
 
   const outEl = document.getElementById('history-outgoing-list');
@@ -1484,7 +1495,8 @@ function renderHistory() {
   if (loadMoreEl) {
     const historyMeta = state.dashboard.history || {};
     loadMoreEl.style.display = historyMeta.hasMore ? 'block' : 'none';
-    loadMoreEl.textContent = historyMeta.hasMore ? 'Load more history' : '';
+    loadMoreEl.disabled = state.isLoading;
+    loadMoreEl.textContent = state.isLoading ? 'Loading history...' : (historyMeta.hasMore ? 'Load more history' : '');
   }
   
   document.querySelectorAll('.carry-checkbox').forEach(cb => {
@@ -1511,8 +1523,9 @@ let searchDebounceTimer = null;
 document.getElementById('history-search').addEventListener('input', (e) => {
   clearTimeout(searchDebounceTimer);
   searchDebounceTimer = setTimeout(() => {
-    state.historySearch = e.target.value;
-    renderHistory();
+    state.historySearch = e.target.value.trim();
+    resetHistoryPagination();
+    loadData(true);
   }, 120);
 });
 
@@ -1521,7 +1534,8 @@ document.querySelectorAll('#history-filters .pill').forEach(pill => {
     document.querySelectorAll('#history-filters .pill').forEach(p => p.classList.remove('active'));
     e.target.classList.add('active');
     state.historyFilter = e.target.dataset.filter;
-    renderHistory();
+    resetHistoryPagination();
+    loadData(true);
   });
 });
 
