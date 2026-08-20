@@ -137,25 +137,44 @@ export async function GET(req) {
       const isToday = t.transaction_date.startsWith(todayStr);
       const isCarried = !!t.is_carried_forward;
 
+      const isInTargetCycle = tDate >= targetBounds.start && tDate < targetBounds.end;
+      const isFromPast = tDate < targetBounds.start;
+      const isFromCurrent = tDate >= currentBounds.start && tDate < currentBounds.end;
+
       let inScope = false;
       let countInCalculations = false;
+      let isCarryingToNext = false;
 
       if (isCurrent) {
-        // Current cycle: transactions in date range appear in list
-        if (tDate >= targetBounds.start && tDate < targetBounds.end) {
+        // Current active cycle:
+        if (isInTargetCycle) {
           inScope = true;
-          // ISOLATE carried over transactions: they do NOT count in current cycle income, spend, balance, or category actuals!
-          countInCalculations = !isCarried;
-        }
-      } else if (isNext) {
-        // Next cycle: future transactions OR carried transactions are in scope AND counted in next cycle calculations!
-        if ((tDate >= targetBounds.start && tDate < targetBounds.end) || isCarried) {
+          if (isCarried) {
+            // Pinned in current cycle to be carried to next cycle -> do not count in current calculations
+            countInCalculations = false;
+            isCarryingToNext = true;
+          } else {
+            countInCalculations = true;
+          }
+        } else if (isFromPast && isCarried) {
+          // Transaction was carried forward from a past cycle into this newly active cycle!
           inScope = true;
           countInCalculations = true;
+          isCarryingToNext = false;
+        }
+      } else if (isNext) {
+        // Next cycle preview:
+        if (isInTargetCycle) {
+          inScope = true;
+          countInCalculations = true;
+        } else if (isFromCurrent && isCarried) {
+          inScope = true;
+          countInCalculations = true;
+          isCarryingToNext = true;
         }
       } else {
-        // Historical archives: only transactions that occurred in that cycle and were not carried away
-        if (tDate >= targetBounds.start && tDate < targetBounds.end && !isCarried) {
+        // Historical archives:
+        if (isInTargetCycle && !isCarried) {
           inScope = true;
           countInCalculations = true;
         }
@@ -187,7 +206,7 @@ export async function GET(req) {
             amount: Number(t.amount),
             note: t.note,
             category: catName,
-            is_carried_forward: isCarried
+            is_carried_forward: isCarryingToNext
           });
         } else {
           if (countInCalculations) {
@@ -202,7 +221,7 @@ export async function GET(req) {
             date: new Date(t.transaction_date).toLocaleString(),
             amount: Number(t.amount),
             note: t.note,
-            is_carried_forward: isCarried
+            is_carried_forward: isCarryingToNext
           });
         }
       }

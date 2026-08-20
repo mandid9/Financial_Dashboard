@@ -68,7 +68,7 @@ export async function evaluateAndDispatchTriggers(forceDaily = false) {
     const daysLeft = Math.max(0, Math.round((endOfCycle - midnightNow) / (1000 * 60 * 60 * 24)));
 
     const { data: categories } = await supabase.from('categories').select('*');
-    const { data: transactions } = await supabase.from('transactions').select('*').gte('transaction_date', startOfMonth);
+    const { data: transactions } = await supabase.from('transactions').select('*');
 
     if (!categories || !transactions) return { notifications: [] };
 
@@ -81,8 +81,17 @@ export async function evaluateAndDispatchTriggers(forceDaily = false) {
     });
 
     let uncatCount = 0;
+    const cycleStartDate = new Date(startOfMonth);
     transactions.forEach(t => {
-      if (t.is_carried_forward) return;
+      const tDate = new Date(t.transaction_date);
+      const isCarried = !!t.is_carried_forward;
+      const isInCycle = tDate >= cycleStartDate && tDate < endOfCycle;
+      const isCarriedFromPast = isCarried && tDate < cycleStartDate;
+
+      // In scope if in cycle (and not carrying forward) OR carried into cycle from past
+      const inScope = (isInCycle && !isCarried) || isCarriedFromPast;
+      if (!inScope) return;
+
       if (t.kind === 'outgoing') {
         totalActual += Number(t.amount);
         if (t.category_id && catMap[t.category_id]) {
