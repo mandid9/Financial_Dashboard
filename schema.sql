@@ -6,6 +6,7 @@ CREATE TABLE categories (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL UNIQUE,
   planned_amount NUMERIC(10, 2) DEFAULT 0.00,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
@@ -21,6 +22,9 @@ CREATE TABLE transactions (
   is_carried_forward BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
+
+-- Keep existing installations compatible with category ordering
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
 
 -- Insert default 'Uncategorized' category
 INSERT INTO categories (name, planned_amount) VALUES ('Uncategorized', 0);

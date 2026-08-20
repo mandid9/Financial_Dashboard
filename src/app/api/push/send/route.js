@@ -1,21 +1,29 @@
 import { NextResponse } from 'next/server';
 import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
 
+function authorizeCron(req) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    return NextResponse.json({ error: 'Push trigger is not configured' }, { status: 503 });
+  }
+
+  const authHeader = req.headers.get('authorization') || '';
+  if (authHeader !== 'Bearer ' + cronSecret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  return null;
+}
+
 // Handles Vercel Cron and automated GET requests
 export async function GET(req) {
   try {
-    const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret) {
-      const authHeader = req.headers.get('authorization');
-      const querySecret = new URL(req.url).searchParams.get('secret');
-      if (authHeader !== `Bearer ${cronSecret}` && querySecret !== cronSecret) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-    }
+    const unauthorized = authorizeCron(req);
+    if (unauthorized) return unauthorized;
 
     const { searchParams } = new URL(req.url);
     const forceDaily = searchParams.get('daily') === 'true' || searchParams.get('cron') === 'true';
-    const result = await evaluateAndDispatchTriggers(forceDaily || true);
+    const result = await evaluateAndDispatchTriggers(forceDaily);
     return NextResponse.json({ success: true, message: 'Automated push check completed', result });
   } catch (err) {
     console.error('GET /api/push/send Error:', err);
@@ -26,6 +34,9 @@ export async function GET(req) {
 // Handles manual / test / custom POST requests
 export async function POST(req) {
   try {
+    const unauthorized = authorizeCron(req);
+    if (unauthorized) return unauthorized;
+
     const body = await req.json().catch(() => ({}));
     const { type, customPayload } = body;
 
