@@ -438,16 +438,38 @@
       padding: 14px;
       margin-bottom: 16px;
     }
+
+    .auth-gate { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; background:var(--bg); }
+    .auth-card { width:100%; max-width:420px; background:var(--surface); border:1px solid var(--surface-border); border-radius:20px; padding:24px; box-shadow:0 12px 40px rgba(0,0,0,0.35); }
+    .auth-card h1 { margin-bottom:8px; }
+    .auth-card p { color:var(--text-secondary); margin-bottom:20px; }
+    .auth-error { min-height:20px; color:var(--danger); font-size:13px; margin-bottom:10px; }
+    .auth-card button { width:100%; }
+    .logout-btn { background:transparent; border:none; color:var(--text-muted); padding:4px 0; font-size:11px; }
   </style>
 </head>
 <body>
 
-<div class="app-container">
+
+<div id="auth-gate" class="auth-gate">
+  <form id="login-form" class="auth-card">
+    <h1>Expenses</h1>
+    <p>Sign in to access your private finance dashboard.</p>
+    <label for="login-email">Email</label>
+    <input id="login-email" type="email" autocomplete="username" required>
+    <label for="login-password">Password</label>
+    <input id="login-password" type="password" autocomplete="current-password" required>
+    <div id="auth-error" class="auth-error" role="alert"></div>
+    <button id="login-submit" class="primary" type="submit">Sign in</button>
+  </form>
+</div>
+
+<div class="app-container" id="app-shell" style="display:none">
   
   <div class="header-bar">
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <h1>Expenses</h1>
-      <small id="last-updated">Updating...</small>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px"><small id="last-updated">Updating...</small><button class="logout-btn" onclick="logout()">Sign out</button></div>
     </div>
     <!-- Cycle Navigator -->
     <div class="cycle-nav-bar">
@@ -758,6 +780,62 @@ function toast(message, type = 'info') {
 }
 
 
+
+function showLogin(message = '') {
+  document.getElementById('auth-gate').style.display = 'flex';
+  document.getElementById('app-shell').style.display = 'none';
+  document.getElementById('auth-error').textContent = message;
+  document.getElementById('login-password').value = '';
+}
+
+function showApp() {
+  document.getElementById('auth-gate').style.display = 'none';
+  document.getElementById('app-shell').style.display = 'block';
+}
+
+async function checkAuth() {
+  const res = await fetch('/api/auth', { cache: 'no-store' });
+  if (!res.ok) {
+    showLogin();
+    return false;
+  }
+  showApp();
+  return true;
+}
+
+async function login(event) {
+  event.preventDefault();
+  const submit = document.getElementById('login-submit');
+  const errorEl = document.getElementById('auth-error');
+  submit.disabled = true;
+  submit.textContent = 'Signing in...';
+  errorEl.textContent = '';
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: document.getElementById('login-email').value, password: document.getElementById('login-password').value })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Unable to sign in');
+    showApp();
+    await loadData();
+    initPushNotifications();
+  } catch (error) {
+    errorEl.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+    submit.textContent = 'Sign in';
+  }
+}
+
+async function logout() {
+  await fetch('/api/auth', { method: 'DELETE' });
+  showLogin('You have been signed out.');
+}
+
+document.getElementById('login-form').addEventListener('submit', login);
+
 function server(fnName, args = [], onSuccess = null, loadingMsg = null) {
   if (loadingMsg) toast(loadingMsg, 'info');
   return fetch(fnName === 'getDashboardData' || fnName === 'getBudgetSettings' ? '/api/dashboard?cycleOffset=' + state.cycleOffset + '&t=' + Date.now() : '/api/action', {
@@ -790,6 +868,7 @@ async function loadData(silent = false) {
   
   try {
     const res = await fetch('/api/dashboard?cycleOffset=' + state.cycleOffset + '&t=' + Date.now(), { cache: 'no-store' });
+    if (res.status === 401) { showLogin('Your session has expired. Please sign in again.'); return; }
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     
@@ -2139,9 +2218,11 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 // Kickoff
-window.onload = () => {
-  loadData();
-  initPushNotifications();
+window.onload = async () => {
+  if (await checkAuth()) {
+    loadData();
+    initPushNotifications();
+  }
 };
 
 </script>

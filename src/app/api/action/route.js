@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { evaluateAndDispatchTriggers } from '@/lib/push';
+import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
 
 async function getCategoryIdByName(rawName) {
   if (!rawName) return null;
@@ -38,6 +39,8 @@ function parseValidAmount(val) {
 }
 
 export async function POST(req) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) return unauthorizedResponse();
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== 'object') {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BPnDeX4aUsrrHasl3PVoX9Cc2jWmbN9Doi1PXThwupBsJOjFWLioEWEmaXcBUAhA3Ezl3aIUFk81rYA8i3jFYXA';
 
@@ -8,6 +9,8 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) return unauthorizedResponse();
   try {
     const { subscription } = await req.json();
     if (!subscription || !subscription.endpoint) {
@@ -37,6 +40,8 @@ export async function POST(req) {
 }
 
 export async function DELETE(req) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) return unauthorizedResponse();
   try {
     const { endpoint } = await req.json();
     if (endpoint) {
