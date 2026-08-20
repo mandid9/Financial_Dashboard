@@ -529,14 +529,15 @@
     </div>
     
     <div style="display:flex; gap:8px; margin-bottom:12px">
-      <input type="text" id="history-search" placeholder="Search..." autocomplete="off" style="margin-bottom:0; flex:1">
-      <select id="history-group" style="margin-bottom:0; width:auto; flex-shrink:0; background:var(--surface); border:1px solid var(--surface-border); color:var(--text); border-radius:12px; padding:8px 12px" onchange="state.historyGroup = this.value; renderHistory()">
+      <input type="text" id="history-search" aria-label="Search transactions" placeholder="Search..." autocomplete="off" style="margin-bottom:0; flex:1">
+      <select id="history-group" aria-label="Group transactions" style="margin-bottom:0; width:auto; flex-shrink:0; background:var(--surface); border:1px solid var(--surface-border); color:var(--text); border-radius:12px; padding:8px 12px" onchange="state.historyGroup = this.value; renderHistory()">
         <option value="date">By Date</option>
         <option value="category">By Category</option>
         <option value="highest">Highest Value</option>
       </select>
     </div>
     
+    <div id="history-results" aria-live="polite" style="font-size:12px; color:var(--text-muted); margin-bottom:8px"></div>
     <div id="history-outgoing-list"></div>
     
     <h2 style="margin-top:24px">Incoming</h2>
@@ -943,7 +944,25 @@ function renderAll() {
   try { renderSettings(); } catch(e) { console.error('renderSettings error:', e); }
   try { renderInsights(); } catch(e) { console.error('renderInsights error:', e); }
   try { populateCategoryDropdowns(); } catch(e) { console.error('populateCategoryDropdowns error:', e); }
+  enhanceTransactionCards();
 }
+
+function enhanceTransactionCards() {
+  document.querySelectorAll('.tx-card').forEach((card) => {
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+    const expanded = card.querySelector('.expandable-content.open');
+    card.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  });
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const card = event.target.closest('.tx-card');
+  if (!card || event.target !== card) return;
+  event.preventDefault();
+  card.click();
+});
 
 function renderHome() {
   if (!state.dashboard || !state.budget || !state.cycle) return;
@@ -1415,6 +1434,13 @@ function renderHistory() {
     return html;
   };
   
+  const resultsEl = document.getElementById('history-results');
+  if (resultsEl) {
+    const total = outList.length + incList.length;
+    const filterText = state.historyFilter === 'all' ? 'All history' : state.historyFilter.charAt(0).toUpperCase() + state.historyFilter.slice(1);
+    resultsEl.textContent = total + ' transaction' + (total === 1 ? '' : 's') + ' - ' + filterText + (state.historySearch ? ' - Search: ' + state.historySearch : '');
+  }
+
   const outEl = document.getElementById('history-outgoing-list');
   outEl.innerHTML = groupedHtml(outList, 'history');
   
@@ -1438,6 +1464,7 @@ function renderHistory() {
   });
 
   populateCategoryDropdowns();
+  enhanceTransactionCards();
 }
 
 let searchDebounceTimer = null;
