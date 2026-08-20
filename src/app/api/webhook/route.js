@@ -1,14 +1,47 @@
 import { NextResponse } from 'next/server';
+import crypto from 'node:crypto';
 import { supabase } from '@/lib/supabase';
 import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
 
-// GET /api/webhook - Quick diagnostic test in browser
+function getProvidedSecret(req) {
+  const authorization = req.headers.get('authorization') || '';
+  if (authorization.startsWith('Bearer ')) {
+    return authorization.slice(7);
+  }
+  return req.headers.get('x-webhook-secret') || '';
+}
+
+function secretsMatch(provided, expected) {
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+  return providedBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
+function authorizeWebhook(req) {
+  const expectedSecret = process.env.WEBHOOK_SECRET;
+  if (!expectedSecret) {
+    return new NextResponse('Webhook is not configured', { status: 503 });
+  }
+
+  if (!secretsMatch(getProvidedSecret(req), expectedSecret)) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+
+  return null;
+}
+
+// GET /api/webhook - Authenticated diagnostic check
 export async function GET(req) {
+  const unauthorized = authorizeWebhook(req);
+  if (unauthorized) return unauthorized;
   return new NextResponse('✅ Webhook endpoint is active and ready to receive SMS transactions!', { status: 200 });
 }
 
 export async function POST(req) {
   try {
+    const unauthorized = authorizeWebhook(req);
+    if (unauthorized) return unauthorized;
     const rawBody = await req.text();
     if (!rawBody || rawBody.trim() === '') return new NextResponse('No message', { status: 400 });
     if (rawBody.length > 4096) return new NextResponse('Payload too large', { status: 413 });

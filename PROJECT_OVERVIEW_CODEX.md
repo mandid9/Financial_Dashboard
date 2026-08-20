@@ -1,4 +1,4 @@
-﻿# 💰 Personal Finance Dashboard — Comprehensive Codex Reference
+# 💰 Personal Finance Dashboard — Comprehensive Codex Reference
 
 > **Document Purpose**: This document serves as the complete architectural, technical, and domain reference for AI coding agents (such as **Codex**) and human developers working on this codebase.
 
@@ -217,3 +217,9 @@ npm run build
 npx vercel --prod
 git push origin main
 `
+
+### 🔐 Webhook Authentication
+- `/api/webhook` requires the `WEBHOOK_SECRET` Vercel environment variable.
+- MacroDroid must send either `Authorization: Bearer <WEBHOOK_SECRET>` or `x-webhook-secret: <WEBHOOK_SECRET>`.
+- Requests return `503` when the server secret is not configured and `401` when the supplied secret is invalid.
+- The secret must not be committed to the repository or sent as a URL query parameter.
