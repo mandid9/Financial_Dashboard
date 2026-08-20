@@ -652,7 +652,7 @@
       <input type="checkbox" id="manual-carry" style="width:auto; margin:0; accent-color:var(--primary); width:16px; height:16px" onclick="event.stopPropagation()">
       <span>📌 Carry over to next cycle</span>
     </div>
-    <button class="primary" style="width:100%" onclick="submitManualEntry()">Save Transaction</button>
+    <button id="btn-save-transaction" class="primary" style="width:100%" onclick="submitManualEntry()">Save Transaction</button>
   </div>
 </div>
 
@@ -665,7 +665,7 @@
     </div>
     <input type="text" id="new-cat-name" placeholder="Category Name">
     <input type="text" inputmode="decimal" id="new-cat-planned" placeholder="Planned Budget (0.00)">
-    <button class="primary" style="width:100%" onclick="submitAddCategory()">Add Category</button>
+    <button id="btn-add-category" class="primary" style="width:100%" onclick="submitAddCategory()">Add Category</button>
   </div>
 </div>
 
@@ -1694,6 +1694,14 @@ async function toggleCarryPin(e, row, kind) {
     await server('toggleCarryForward', [row, willCarry]);
     loadData(true);
   } catch(err) {
+    if (willCarry) {
+      state.carryItems = state.carryItems.filter(i => !(String(i.row) === String(row) && i.kind === kind));
+    } else {
+      state.carryItems.push({ row, kind });
+    }
+    sessionStorage.setItem('carryItems', JSON.stringify(state.carryItems));
+    renderAll();
+    toast('Could not save carry-forward status. Please try again.', 'error');
     console.error('Failed to persist carry status:', err);
   }
 }
@@ -1943,9 +1951,12 @@ async function submitManualEntry() {
   const isCarried = document.getElementById('manual-carry') ? document.getElementById('manual-carry').checked : false;
   
   if (isNaN(amt) || amt <= 0 || !src) return toast('Valid amount and source required', 'error');
+  const submitButton = document.getElementById('btn-save-transaction');
+  if (!submitButton || submitButton.disabled) return;
+  submitButton.disabled = true;
+  submitButton.textContent = 'Saving...';
   
   try {
-    closeModalForce('modal-manual');
     toast('Saving...', 'info');
     if (state.manualType === 'expense') {
       const cat = document.getElementById('manual-category').value;
@@ -1967,8 +1978,13 @@ async function submitManualEntry() {
       await server('addManualIncome', [amt, src, note, '', isCarried]);
       toast('Added income successfully', 'success');
     }
+    closeModalForce('modal-manual');
     loadData();
   } catch(e) {}
+  finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Save Transaction';
+  }
 }
 
 function openSplitModal(row, totalAmount) {
@@ -2018,6 +2034,10 @@ function updateSplitTotal() {
 }
 
 async function submitSplit() {
+  const submitButton = document.getElementById('btn-confirm-split');
+  if (!submitButton || submitButton.disabled) return;
+  submitButton.disabled = true;
+  submitButton.textContent = 'Splitting...';
   const parts = [];
   let debtAmt = 0;
   let debtCatName = '';
@@ -2056,12 +2076,16 @@ async function submitSplit() {
   }
 
   try {
-    closeModalForce('modal-split');
     toast('Splitting...', 'info');
     await server('splitTransaction', [state.splitRow, parts]);
     toast('Split successful', 'success');
+    closeModalForce('modal-split');
     loadData();
   } catch(e) {}
+  finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Confirm Split';
+  }
 }
 
 // --- 7. CATEGORY MANAGEMENT ---
@@ -2075,13 +2099,21 @@ async function submitAddCategory() {
   const name = document.getElementById('new-cat-name').value.trim();
   const plan = parseFloat(document.getElementById('new-cat-planned').value) || 0;
   if(!name) return toast('Name required', 'error');
+  const submitButton = document.getElementById('btn-add-category');
+  if (!submitButton || submitButton.disabled) return;
+  submitButton.disabled = true;
+  submitButton.textContent = 'Adding...';
   
   try {
-    closeModalForce('modal-add-category');
     await server('addExpenseCategory', [name, plan], null, 'Adding category...');
     toast('Category added', 'success');
+    closeModalForce('modal-add-category');
     loadData();
   } catch(e) {}
+  finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Add Category';
+  }
 }
 
 async function saveCategoryEdit(row, oldName) {
