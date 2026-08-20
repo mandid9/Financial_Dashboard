@@ -9,6 +9,10 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const cycleOffset = parseInt(searchParams.get('cycleOffset') || '0', 10);
+    const requestedHistoryPage = parseInt(searchParams.get('historyPage') || '1', 10);
+    const historyPage = Number.isFinite(requestedHistoryPage) ? Math.max(1, requestedHistoryPage) : 1;
+    const requestedHistoryPageSize = parseInt(searchParams.get('historyPageSize') || '50', 10);
+    const historyPageSize = Number.isFinite(requestedHistoryPageSize) ? Math.min(100, Math.max(1, requestedHistoryPageSize)) : 50;
     const now = new Date();
     const cycleStartDay = 20;
 
@@ -321,6 +325,13 @@ export async function GET(req) {
         };
       });
 
+    const historyItems = [...outgoing, ...incoming].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const historyTotal = historyItems.length;
+    const historyStart = (historyPage - 1) * historyPageSize;
+    const historyPageItems = historyItems.slice(historyStart, historyStart + historyPageSize);
+    const pagedOutgoing = historyPageItems.filter(item => item.kind === 'outgoing');
+    const pagedIncoming = historyPageItems.filter(item => item.kind === 'incoming');
+
     return NextResponse.json({
       cycle: {
         label: targetBounds.label,
@@ -333,8 +344,14 @@ export async function GET(req) {
         daysLeft
       },
       dashboard: {
-        outgoing,
-        incoming,
+        outgoing: pagedOutgoing,
+        incoming: pagedIncoming,
+        history: {
+          page: historyPage,
+          pageSize: historyPageSize,
+          total: historyTotal,
+          hasMore: historyStart + historyPageItems.length < historyTotal
+        },
         categories: categories.map(c => c.name),
         todayTotal,
         todayIncome,

@@ -542,6 +542,7 @@
     
     <h2 style="margin-top:24px">Incoming</h2>
     <div id="history-incoming-list"></div>
+    <button id="history-load-more" class="alt" style="display:none; width:100%; margin-top:16px" onclick="loadMoreHistory()">Load more history</button>
 
     <div style="margin-top:24px; display:flex; flex-direction:column; gap:12px;">
       <button class="alt" onclick="carrySelected()">Carry Selected Forward</button>
@@ -747,6 +748,9 @@ const state = {
   historyFilter: 'all',
   historySearch: '',
   historyGroup: 'date',
+  historyPage: 1,
+  historyPageSize: 50,
+  historyAppend: false,
   splitRow: null,
   splitOriginal: 0,
   carryItems: JSON.parse(sessionStorage.getItem('carryItems') || '[]'),
@@ -870,13 +874,19 @@ async function loadData(silent = false) {
   state.isLoading = true;
   
   try {
-    const res = await fetch('/api/dashboard?cycleOffset=' + state.cycleOffset + '&t=' + Date.now(), { cache: 'no-store' });
+    if (!state.historyAppend) state.historyPage = 1;
+    const res = await fetch('/api/dashboard?cycleOffset=' + state.cycleOffset + '&historyPage=' + state.historyPage + '&historyPageSize=' + state.historyPageSize + '&t=' + Date.now(), { cache: 'no-store' });
     if (res.status === 401) { showLogin('Your session has expired. Please sign in again.'); return; }
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     
     state.cycle = data.cycle;
+    if (state.historyAppend && state.dashboard && data.dashboard.history) {
+      data.dashboard.outgoing = [...state.dashboard.outgoing, ...data.dashboard.outgoing];
+      data.dashboard.incoming = [...state.dashboard.incoming, ...data.dashboard.incoming];
+    }
     state.dashboard = data.dashboard;
+    state.historyAppend = false;
     state.budget = data.budget;
     
     state.lastUpdated = new Date();
@@ -884,28 +894,51 @@ async function loadData(silent = false) {
     if (lu) lu.textContent = 'Updated ' + state.lastUpdated.toLocaleTimeString();
     
     renderAll();
+    return true;
   } catch(e) {
     console.error(e);
     if (!silent) toast('Error: ' + (e.message || e), 'error');
   } finally {
     state.isLoading = false;
   }
+  return false;
+}
+
+function resetHistoryPagination() {
+  state.historyPage = 1;
+  state.historyAppend = false;
 }
 
 function prevCycle() {
   state.cycleOffset -= 1;
+  resetHistoryPagination();
   loadData();
 }
 
 function nextCycle() {
   state.cycleOffset += 1;
+  resetHistoryPagination();
   loadData();
 }
 
 function resetCycle() {
   if (state.cycleOffset !== 0) {
     state.cycleOffset = 0;
+    resetHistoryPagination();
     loadData();
+  }
+}
+
+async function loadMoreHistory() {
+  const historyMeta = state.dashboard && state.dashboard.history;
+  if (!historyMeta || !historyMeta.hasMore || state.isLoading) return;
+  const previousPage = state.historyPage;
+  state.historyPage += 1;
+  state.historyAppend = true;
+  const loaded = await loadData(true);
+  if (!loaded) {
+    state.historyPage = previousPage;
+    state.historyAppend = false;
   }
 }
 
@@ -1446,6 +1479,13 @@ function renderHistory() {
   
   const incEl = document.getElementById('history-incoming-list');
   incEl.innerHTML = groupedHtml(incList, 'history-inc');
+
+  const loadMoreEl = document.getElementById('history-load-more');
+  if (loadMoreEl) {
+    const historyMeta = state.dashboard.history || {};
+    loadMoreEl.style.display = historyMeta.hasMore ? 'block' : 'none';
+    loadMoreEl.textContent = historyMeta.hasMore ? 'Load more history' : '';
+  }
   
   document.querySelectorAll('.carry-checkbox').forEach(cb => {
     const row = String(cb.dataset.row);
