@@ -684,9 +684,18 @@
     
     <button class="alt" style="width:100%; margin-bottom:16px" onclick="addSplitPart()">+ Add Part</button>
     
-    <div class="card" style="padding:12px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
-      <span>Total:</span>
-      <strong id="split-running-total">EGP 0.00</strong>
+    <div class="card" style="padding:12px; margin-bottom:16px; display:flex; flex-direction:column; gap:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="color:var(--text-muted)">Allocated:</span>
+        <strong id="split-running-total">EGP 0.00</strong>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="color:var(--text-muted)">Remaining:</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <strong id="split-remaining-amount">EGP 0.00</strong>
+          <button type="button" id="btn-fill-remaining" class="alt" style="padding:2px 8px; font-size:12px; border-radius:4px; display:none; width:auto; margin:0;" onclick="fillRemainingSplit()">Fill</button>
+        </div>
+      </div>
     </div>
     
     <button class="primary" style="width:100%" id="btn-confirm-split" onclick="submitSplit()">Confirm Split</button>
@@ -2082,7 +2091,7 @@ function openSplitModal(row, totalAmount) {
   openModal('modal-split');
 }
 
-function addSplitPart() {
+function addSplitPart(defaultAmount = '') {
   const container = document.getElementById('split-parts-container');
   if (container.children.length >= 5) return toast('Max 5 parts', 'error');
   
@@ -2093,7 +2102,7 @@ function addSplitPart() {
   const options = '<option value="">Uncategorized</option>' + cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
   
   div.innerHTML = `
-    <input type="text" inputmode="decimal" class="split-amt" placeholder="0.00" oninput="updateSplitTotal()">
+    <input type="text" inputmode="decimal" class="split-amt" placeholder="0.00" value="${defaultAmount}" oninput="updateSplitTotal()">
     <select class="split-cat">${options}</select>
     <button class="remove-btn" onclick="this.parentElement.remove(); updateSplitTotal()">✕</button>
   `;
@@ -2106,12 +2115,67 @@ function updateSplitTotal() {
   inputs.forEach(inp => sum += (parseFloat(inp.value) || 0));
   
   const totalEl = document.getElementById('split-running-total');
-  totalEl.textContent = fmt(sum) + ' / ' + fmt(state.splitOriginal);
+  const remainingEl = document.getElementById('split-remaining-amount');
+  const fillBtn = document.getElementById('btn-fill-remaining');
   
+  if (totalEl) {
+    totalEl.textContent = fmt(sum) + ' / ' + fmt(state.splitOriginal);
+  }
+  
+  const remaining = Math.round((state.splitOriginal - sum) * 100) / 100;
   const diff = Math.abs(sum - state.splitOriginal);
   const isValid = diff < 0.01;
-  totalEl.className = isValid ? 'text-green' : 'text-red';
+  
+  if (remainingEl) {
+    if (isValid) {
+      remainingEl.textContent = fmt(0) + ' ✓';
+      remainingEl.className = 'text-green';
+    } else if (remaining < 0) {
+      remainingEl.textContent = `-${fmt(Math.abs(remaining))} (Over)`;
+      remainingEl.className = 'text-red';
+    } else {
+      remainingEl.textContent = fmt(remaining);
+      remainingEl.className = '';
+    }
+  }
+  
+  if (fillBtn) {
+    fillBtn.style.display = (remaining > 0.009) ? 'inline-block' : 'none';
+  }
+
+  if (totalEl) {
+    totalEl.className = isValid ? 'text-green' : 'text-red';
+  }
+  
   document.getElementById('btn-confirm-split').disabled = !isValid;
+}
+
+function fillRemainingSplit() {
+  const inputs = document.querySelectorAll('.split-amt');
+  let sum = 0;
+  let targetInput = null;
+  inputs.forEach(inp => {
+    const val = parseFloat(inp.value) || 0;
+    sum += val;
+    if (!targetInput && (!inp.value || parseFloat(inp.value) === 0)) {
+      targetInput = inp;
+    }
+  });
+  const remaining = Math.round((state.splitOriginal - sum) * 100) / 100;
+  if (remaining <= 0) return;
+  
+  if (!targetInput) {
+    if (document.querySelectorAll('.split-part').length < 5) {
+      addSplitPart(remaining > 0 ? remaining : '');
+      updateSplitTotal();
+      return;
+    } else {
+      return toast('Max 5 parts', 'error');
+    }
+  }
+  
+  targetInput.value = remaining;
+  updateSplitTotal();
 }
 
 async function submitSplit() {
