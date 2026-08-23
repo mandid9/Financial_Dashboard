@@ -1777,6 +1777,7 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
   let badges = '';
   if (isRev) badges += `<span class="badge red">Reversed</span>`;
   if (isSplit) badges += `<span class="badge blue">Split</span>`;
+  if (t.carried_from_prev) badges += `<span class="badge blue">Carried Over</span>`;
   
   const checkboxHtml = showCheckbox ? `<div class="checkbox-container" onclick="event.stopPropagation()"><input type="checkbox" class="carry-checkbox" data-row="${t.row}" data-kind="${t.kind}"></div>` : '';
   const rowQ = `'${t.row}'`; // quote the UUID for onclick handlers
@@ -1808,8 +1809,7 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
   `;
 
   const isCarried = (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row) && i.kind === t.kind)) ||
-    (!!t.is_carried_forward) ||
-    (state.dashboard?.carriedTransactions && state.dashboard.carriedTransactions.some(i => String(i.row) === String(t.row)));
+    (!!t.is_carried_forward);
   const pinTitle = isCarried ? 'Carried to next cycle (click to unpin)' : 'Carry to next cycle (click to pin)';
   const pinSourceEscaped = esc(t.source || 'Transaction').replace(/'/g, "\\'");
   const pinHtml = `<button class="carry-pin ${isCarried ? 'active' : ''}" title="${pinTitle}" onclick="promptCarryPin(event, ${rowQ}, '${t.kind}', '${pinSourceEscaped}', ${Number(t.amount) || 0})">📌</button>`;
@@ -1844,7 +1844,7 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
 function promptCarryPin(e, row, kind, source, amount) {
   e.stopPropagation();
   const isCurrentlyCarried = (state.carryItems && state.carryItems.some(i => String(i.row) === String(row) && i.kind === kind)) ||
-    (state.dashboard?.carriedTransactions && state.dashboard.carriedTransactions.some(i => String(i.row) === String(row)));
+    (state.dashboard && [...(state.dashboard.outgoing || []), ...(state.dashboard.incoming || [])].some(i => String(i.row) === String(row) && i.is_carried_forward));
   
   const willCarry = !isCurrentlyCarried;
   state.pendingCarry = { row, kind, willCarry };

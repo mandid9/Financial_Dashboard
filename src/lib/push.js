@@ -82,14 +82,19 @@ export async function evaluateAndDispatchTriggers(forceDaily = false) {
 
     let uncatCount = 0;
     const cycleStartDate = new Date(startOfMonth);
+    let prevCycleMonth = cycleMonth - 1;
+    let prevCycleYear = cycleYear;
+    if (prevCycleMonth < 0) { prevCycleMonth = 11; prevCycleYear -= 1; }
+    const prevCycleStartDate = new Date(prevCycleYear, prevCycleMonth, cycleStartDay);
+
     transactions.forEach(t => {
       const tDate = new Date(t.transaction_date);
       const isCarried = !!t.is_carried_forward;
       const isInCycle = tDate >= cycleStartDate && tDate < endOfCycle;
-      const isCarriedFromPast = isCarried && tDate < cycleStartDate;
+      const isCarriedFromPrev = isCarried && tDate >= prevCycleStartDate && tDate < cycleStartDate;
 
-      // In scope if in cycle (and not carrying forward) OR carried into cycle from past
-      const inScope = (isInCycle && !isCarried) || isCarriedFromPast;
+      // In scope if in cycle (and not carrying forward) OR carried into cycle from previous cycle
+      const inScope = (isInCycle && !isCarried) || isCarriedFromPrev;
       if (!inScope) return;
 
       if (t.kind === 'outgoing') {

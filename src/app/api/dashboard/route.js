@@ -49,7 +49,9 @@ export async function GET(req) {
     }
 
     const currentBounds = getCycleBounds(0);
+    const prevCurrentBounds = getCycleBounds(-1);
     const targetBounds = getCycleBounds(cycleOffset);
+    const prevTargetBounds = getCycleBounds(cycleOffset - 1);
     const nextBounds = getCycleBounds(1);
 
     const isCurrent = cycleOffset === 0;
@@ -74,7 +76,6 @@ export async function GET(req) {
     // We compute this from the real current active cycle (offset = 0)
     let currentDebtPlanned = 0;
     let currentDebtPaid = 0;
-    let currentNewCreditCardSpend = 0;
 
     const debtCatObj = categories.find(c => c.name.toLowerCase() === 'debt' || c.name.toLowerCase() === 'credit card');
     if (debtCatObj) {
@@ -83,7 +84,9 @@ export async function GET(req) {
 
     allTransactions.forEach(t => {
       const tDate = new Date(t.transaction_date);
-      const inCurrentCycle = tDate >= currentBounds.start && tDate < currentBounds.end && !t.is_carried_forward;
+      const isFromCurrent = tDate >= currentBounds.start && tDate < currentBounds.end && !t.is_carried_forward;
+      const isCarriedIntoCurrent = tDate >= prevCurrentBounds.start && tDate < prevCurrentBounds.end && t.is_carried_forward;
+      const inCurrentCycle = isFromCurrent || isCarriedIntoCurrent;
 
       if (inCurrentCycle && t.kind === 'outgoing') {
         // If assigned to Debt category -> repayment toward current debt
@@ -145,46 +148,29 @@ export async function GET(req) {
       const isCarried = !!t.is_carried_forward;
 
       const isInTargetCycle = tDate >= targetBounds.start && tDate < targetBounds.end;
-      const isFromPast = tDate < targetBounds.start;
-      const isFromCurrent = tDate >= currentBounds.start && tDate < currentBounds.end;
+      const isFromPrevTargetCycle = tDate >= prevTargetBounds.start && tDate < prevTargetBounds.end;
 
       let inScope = false;
       let countInCalculations = false;
       let isCarryingToNext = false;
+      let isCarriedFromPrev = false;
 
-      if (isCurrent) {
-        // Current active cycle:
-        if (isInTargetCycle) {
-          inScope = true;
-          if (isCarried) {
-            // Pinned in current cycle to be carried to next cycle -> do not count in current calculations
-            countInCalculations = false;
-            isCarryingToNext = true;
-          } else {
-            countInCalculations = true;
-          }
-        } else if (isFromPast && isCarried) {
-          // Transaction was carried forward from a past cycle into this newly active cycle!
-          inScope = true;
+      if (isInTargetCycle) {
+        inScope = true;
+        if (isCarried) {
+          // Pinned in this target cycle to carry forward to the next cycle -> do not count in this cycle's calculations
+          countInCalculations = false;
+          isCarryingToNext = true;
+        } else {
           countInCalculations = true;
           isCarryingToNext = false;
         }
-      } else if (isNext) {
-        // Next cycle preview:
-        if (isInTargetCycle) {
-          inScope = true;
-          countInCalculations = true;
-        } else if (isFromCurrent && isCarried) {
-          inScope = true;
-          countInCalculations = true;
-          isCarryingToNext = true;
-        }
-      } else {
-        // Historical archives:
-        if (isInTargetCycle && !isCarried) {
-          inScope = true;
-          countInCalculations = true;
-        }
+      } else if (isFromPrevTargetCycle && isCarried) {
+        // Originated in the immediately preceding cycle and pinned to carry into this cycle!
+        inScope = true;
+        countInCalculations = true; // Active & counted in this target cycle
+        isCarryingToNext = false;   // It belongs to this target cycle, NOT automatically carrying to future cycles
+        isCarriedFromPrev = true;
       }
 
       if (inScope) {
@@ -214,7 +200,8 @@ export async function GET(req) {
             amount: Number(t.amount),
             note: t.note,
             category: catName,
-            is_carried_forward: isCarryingToNext
+            is_carried_forward: isCarryingToNext,
+            carried_from_prev: isCarriedFromPrev
           });
         } else {
           if (countInCalculations) {
@@ -229,7 +216,8 @@ export async function GET(req) {
             date: new Date(t.transaction_date).toLocaleString(),
             amount: Number(t.amount),
             note: t.note,
-            is_carried_forward: isCarryingToNext
+            is_carried_forward: isCarryingToNext,
+            carried_from_prev: isCarriedFromPrev
           });
         }
       }
@@ -309,7 +297,10 @@ export async function GET(req) {
     }
 
     const carriedTransactions = allTransactions
-      .filter(t => t.is_carried_forward)
+      .filter(t => {
+        const d = new Date(t.transaction_date);
+        return d >= currentBounds.start && d < currentBounds.end && t.is_carried_forward;
+      })
       .map(t => {
         const catName = (t.category_id && catMap[t.category_id])
           ? catMap[t.category_id].name
