@@ -299,7 +299,12 @@ export async function GET(req) {
     const carriedTransactions = allTransactions
       .filter(t => {
         const d = new Date(t.transaction_date);
-        return d >= currentBounds.start && d < currentBounds.end && t.is_carried_forward;
+        if (isCurrent) {
+          return d >= currentBounds.start && d < currentBounds.end && t.is_carried_forward;
+        } else if (isNext) {
+          return d >= prevTargetBounds.start && d < prevTargetBounds.end && t.is_carried_forward;
+        }
+        return false;
       })
       .map(t => {
         const catName = (t.category_id && catMap[t.category_id])
