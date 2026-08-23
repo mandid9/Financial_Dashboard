@@ -796,6 +796,30 @@
   </div>
 </div>
 
+<!-- Carry Pin Confirmation Modal -->
+<div id="modal-carry-confirm" class="modal-backdrop" onclick="closeModal(event, 'modal-carry-confirm')">
+  <div class="modal" style="max-width:360px; text-align:center">
+    <div style="font-size:36px; margin-bottom:8px" id="carry-confirm-icon">📌</div>
+    <h2 style="margin-bottom:6px" id="carry-confirm-title">Move to Next Cycle?</h2>
+    <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px" id="carry-confirm-desc">
+      Carry this transaction over to the next budget cycle?
+    </p>
+    
+    <div class="card" style="padding:12px; margin-bottom:16px; text-align:left; background:var(--surface-hover);">
+      <div style="font-weight:600; font-size:14px; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" id="carry-confirm-source">Transaction</div>
+      <div style="font-size:12px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
+        <span id="carry-confirm-kind">Outgoing Expense</span>
+        <strong id="carry-confirm-amount" style="color:var(--text); font-size:14px">EGP 0.00</strong>
+      </div>
+    </div>
+    
+    <div style="display:flex; gap:10px">
+      <button class="alt" style="flex:1" onclick="closeModalForce('modal-carry-confirm')">Cancel</button>
+      <button class="primary" style="flex:1" id="carry-confirm-btn" onclick="confirmCarryPinAction()">Move to Next Cycle</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // --- 1. STATE ---
 const state = {
@@ -815,6 +839,7 @@ const state = {
   splitRow: null,
   splitOriginal: 0,
   carryItems: JSON.parse(sessionStorage.getItem('carryItems') || '[]'),
+  pendingCarry: null,
   isLoading: false
 };
 
@@ -1785,7 +1810,9 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
   const isCarried = (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row) && i.kind === t.kind)) ||
     (!!t.is_carried_forward) ||
     (state.dashboard?.carriedTransactions && state.dashboard.carriedTransactions.some(i => String(i.row) === String(t.row)));
-  const pinHtml = `<button class="carry-pin ${isCarried ? 'active' : ''}" title="${isCarried ? 'Carried to next cycle' : 'Carry to next cycle'}" onclick="toggleCarryPin(event, '${t.row}', '${t.kind}')">📌</button>`;
+  const pinTitle = isCarried ? 'Carried to next cycle (click to unpin)' : 'Carry to next cycle (click to pin)';
+  const pinSourceEscaped = esc(t.source || 'Transaction').replace(/'/g, "\\'");
+  const pinHtml = `<button class="carry-pin ${isCarried ? 'active' : ''}" title="${pinTitle}" onclick="promptCarryPin(event, ${rowQ}, '${t.kind}', '${pinSourceEscaped}', ${Number(t.amount) || 0})">📌</button>`;
 
   return `
     <div class="card tx-card ${isRev ? 'reversed' : ''} ${t.kind}" onclick="toggleExpand('${cid}')" style="padding: 12px; margin-bottom: 8px">
@@ -1814,13 +1841,47 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
   `;
 }
 
-async function toggleCarryPin(e, row, kind) {
+function promptCarryPin(e, row, kind, source, amount) {
   e.stopPropagation();
   const isCurrentlyCarried = (state.carryItems && state.carryItems.some(i => String(i.row) === String(row) && i.kind === kind)) ||
     (state.dashboard?.carriedTransactions && state.dashboard.carriedTransactions.some(i => String(i.row) === String(row)));
   
   const willCarry = !isCurrentlyCarried;
+  state.pendingCarry = { row, kind, willCarry };
   
+  const iconEl = document.getElementById('carry-confirm-icon');
+  const titleEl = document.getElementById('carry-confirm-title');
+  const descEl = document.getElementById('carry-confirm-desc');
+  const sourceEl = document.getElementById('carry-confirm-source');
+  const kindEl = document.getElementById('carry-confirm-kind');
+  const amountEl = document.getElementById('carry-confirm-amount');
+  const btnEl = document.getElementById('carry-confirm-btn');
+  
+  if (iconEl) iconEl.textContent = willCarry ? '📌' : '↩️';
+  if (titleEl) titleEl.textContent = willCarry ? 'Move to Next Cycle?' : 'Keep in Current Cycle?';
+  if (descEl) descEl.textContent = willCarry 
+    ? 'This transaction will be carried forward to the next budget cycle.' 
+    : 'This will remove the carry-forward pin and keep the transaction in the current cycle.';
+  if (sourceEl) sourceEl.textContent = source || 'Transaction';
+  if (kindEl) kindEl.textContent = kind === 'incoming' ? 'Incoming Income' : 'Outgoing Expense';
+  if (amountEl) {
+    amountEl.textContent = fmt(amount);
+    amountEl.style.color = kind === 'incoming' ? 'var(--success)' : 'var(--text)';
+  }
+  if (btnEl) {
+    btnEl.textContent = willCarry ? '📌 Move to Next Cycle' : 'Keep in Current Cycle';
+    btnEl.className = willCarry ? 'primary' : 'alt';
+  }
+  
+  openModal('modal-carry-confirm');
+}
+
+async function confirmCarryPinAction() {
+  if (!state.pendingCarry) return;
+  const { row, kind, willCarry } = state.pendingCarry;
+  closeModalForce('modal-carry-confirm');
+  state.pendingCarry = null;
+
   if (willCarry) {
     if (!state.carryItems.some(i => String(i.row) === String(row))) {
       state.carryItems.push({ row, kind });
