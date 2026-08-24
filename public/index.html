@@ -676,6 +676,21 @@
       </div>
     </div>
 
+    <!-- Biometric Security Panel (Android App Only) -->
+    <div id="biometric-panel" class="card" style="display:none; margin-bottom:20px; padding:16px; background:linear-gradient(135deg, rgba(34,197,94,0.08), rgba(15,28,63,0.4)); border:1px solid rgba(34,197,94,0.2)">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+        <div style="display:flex; align-items:center; gap:8px">
+          <span style="font-size:18px">🔐</span>
+          <strong>Fingerprint App Lock</strong>
+        </div>
+        <span id="biometric-status-badge" class="badge">Disabled</span>
+      </div>
+      <small style="color:var(--text-muted); display:block; margin-bottom:12px; line-height:1.4">
+        Require fingerprint or screen lock verification when opening the Financial Dashboard.
+      </small>
+      <button id="btn-toggle-biometric" class="primary" style="width:100%" onclick="toggleBiometricLock()">Enable Fingerprint Lock</button>
+    </div>
+
     <button class="primary" style="width:100%; margin-bottom:16px;" onclick="openAddCategoryModal()">+ Add Category</button>
     <div id="settings-category-list">
       <div class="card skeleton skeleton-card"></div>
@@ -2719,11 +2734,61 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+// --- 10. BIOMETRIC SECURITY (ANDROID APP) ---
+function initBiometricUI() {
+  if (window.AndroidApp && typeof window.AndroidApp.isBiometricSupported === 'function') {
+    try {
+      if (window.AndroidApp.isBiometricSupported()) {
+        const panel = document.getElementById('biometric-panel');
+        if (panel) panel.style.display = 'block';
+        updateBiometricUI();
+      }
+    } catch (e) {
+      console.warn('Biometric check notice:', e);
+    }
+  }
+}
+
+function updateBiometricUI() {
+  if (!window.AndroidApp || typeof window.AndroidApp.isBiometricLockEnabled !== 'function') return;
+  const isEnabled = window.AndroidApp.isBiometricLockEnabled();
+  const badge = document.getElementById('biometric-status-badge');
+  const btn = document.getElementById('btn-toggle-biometric');
+  if (badge && btn) {
+    if (isEnabled) {
+      badge.textContent = 'Active 🔒';
+      badge.className = 'badge green';
+      btn.textContent = 'Disable Fingerprint Lock';
+      btn.className = 'alt';
+    } else {
+      badge.textContent = 'Disabled';
+      badge.className = 'badge';
+      btn.textContent = 'Enable Fingerprint Lock';
+      btn.className = 'primary';
+    }
+  }
+}
+
+function toggleBiometricLock() {
+  if (!window.AndroidApp || typeof window.AndroidApp.setBiometricLockEnabled !== 'function') return;
+  const current = window.AndroidApp.isBiometricLockEnabled();
+  if (!current) {
+    window.AndroidApp.setBiometricLockEnabled(true);
+    updateBiometricUI();
+    toast('🔐 Fingerprint lock enabled for app launch', 'success');
+  } else {
+    window.AndroidApp.setBiometricLockEnabled(false);
+    updateBiometricUI();
+    toast('🔓 Fingerprint lock disabled', 'info');
+  }
+}
+
 // Kickoff
 window.onload = async () => {
   if (await checkAuth()) {
     loadData();
     initPushNotifications();
+    initBiometricUI();
   }
 };
 

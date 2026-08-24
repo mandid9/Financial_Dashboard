@@ -24,6 +24,8 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
@@ -44,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
     private SwipeRefreshLayout swipeRefresh;
     private ProgressBar progressBar;
+    private boolean isUnlocked = false;
 
     @Override
     @SuppressLint("SetJavaScriptEnabled")
@@ -77,11 +80,61 @@ public class MainActivity extends AppCompatActivity {
         setupSwipeRefresh();
         checkAndRequestPermissions();
 
+        // 3. Biometric Security Check on Launch
+        SharedPreferences prefs = getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+        boolean biometricEnabled = prefs.getBoolean("biometric_lock_enabled", false);
+
+        if (biometricEnabled && isBiometricSupported()) {
+            webView.setVisibility(View.INVISIBLE);
+            showBiometricPrompt();
+        } else {
+            isUnlocked = true;
+            webView.setVisibility(View.VISIBLE);
+        }
+
         if (savedInstanceState == null) {
             webView.loadUrl(DASHBOARD_URL);
         } else {
             webView.restoreState(savedInstanceState);
         }
+    }
+
+    public boolean isBiometricSupported() {
+        BiometricManager bm = BiometricManager.from(this);
+        int authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
+        return bm.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS;
+    }
+
+    public void showBiometricPrompt() {
+        BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Unlock Financial Dashboard")
+                .setSubtitle("Confirm fingerprint or device lock to access your data")
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                .build();
+
+        BiometricPrompt prompt = new BiometricPrompt(this, ContextCompat.getMainExecutor(this), new BiometricPrompt.AuthenticationCallback() {
+            @Override
+            public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
+                super.onAuthenticationSucceeded(result);
+                isUnlocked = true;
+                runOnUiThread(() -> {
+                    if (webView != null) {
+                        webView.setVisibility(View.VISIBLE);
+                        webView.evaluateJavascript("if (window.onBiometricSuccess) window.onBiometricSuccess();", null);
+                    }
+                });
+            }
+
+            @Override
+            public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
+                super.onAuthenticationError(errorCode, errString);
+                if (!isUnlocked) {
+                    Toast.makeText(MainActivity.this, "Authentication required to view dashboard", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
+        prompt.authenticate(promptInfo);
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -120,7 +173,6 @@ public class MainActivity extends AppCompatActivity {
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
                         startY = event.getY();
-                        // Only enable SwipeRefresh if touch started within the top 250px and at top of page
                         swipeRefresh.setEnabled(startY <= 250 && webView.getScrollY() == 0);
                         break;
                     case MotionEvent.ACTION_MOVE:
@@ -175,7 +227,6 @@ public class MainActivity extends AppCompatActivity {
         swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.surface);
         swipeRefresh.setOnRefreshListener(() -> webView.reload());
 
-        // Child scroll check: only allow refresh if webView is at the absolute top
         swipeRefresh.setOnChildScrollUpCallback((parent, child) -> {
             return webView.getScrollY() > 0 || webView.canScrollVertically(-1);
         });
@@ -236,15 +287,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public static class WebAppInterface {
-        private final Context mContext;
+        private final MainActivity mActivity;
 
-        WebAppInterface(Context context) {
-            this.mContext = context;
+        WebAppInterface(MainActivity activity) {
+            this.mActivity = activity;
         }
 
         @JavascriptInterface
         public void vibrate(int durationMs) {
-            Vibrator v = (Vibrator) mContext.getSystemService(Context.VIBRATOR_SERVICE);
+            Vibrator v = (Vibrator) mActivity.getSystemService(Context.VIBRATOR_SERVICE);
             if (v != null && v.hasVibrator()) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     v.vibrate(VibrationEffect.createOneShot(Math.min(durationMs, 500), VibrationEffect.DEFAULT_AMPLITUDE));
@@ -257,29 +308,56 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void setWebhookToken(String token) {
             if (token != null) {
-                SharedPreferences prefs = mContext.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+                SharedPreferences prefs = mActivity.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
                 prefs.edit().putString("webhook_token", token.trim()).apply();
             }
         }
 
         @JavascriptInterface
         public String getWebhookToken() {
-            SharedPreferences prefs = mContext.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+            SharedPreferences prefs = mActivity.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
             return prefs.getString("webhook_token", "");
         }
 
         @JavascriptInterface
         public void syncCustomSmsRules(String jsonRules) {
             if (jsonRules != null) {
-                SharedPreferences prefs = mContext.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+                SharedPreferences prefs = mActivity.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
                 prefs.edit().putString("custom_sms_rules", jsonRules).apply();
             }
         }
 
         @JavascriptInterface
         public String getCustomSmsRules() {
-            SharedPreferences prefs = mContext.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+            SharedPreferences prefs = mActivity.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
             return prefs.getString("custom_sms_rules", "[]");
+        }
+
+        // --- Biometric Authentication Bridge ---
+        @JavascriptInterface
+        public boolean isBiometricSupported() {
+            return mActivity.isBiometricSupported();
+        }
+
+        @JavascriptInterface
+        public boolean isBiometricLockEnabled() {
+            SharedPreferences prefs = mActivity.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+            return prefs.getBoolean("biometric_lock_enabled", false);
+        }
+
+        @JavascriptInterface
+        public void setBiometricLockEnabled(boolean enabled) {
+            SharedPreferences prefs = mActivity.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+            prefs.edit().putBoolean("biometric_lock_enabled", enabled).apply();
+            mActivity.runOnUiThread(() -> {
+                String status = enabled ? "🔐 Fingerprint Lock Enabled" : "🔓 Fingerprint Lock Disabled";
+                Toast.makeText(mActivity, status, Toast.LENGTH_SHORT).show();
+            });
+        }
+
+        @JavascriptInterface
+        public void promptBiometricAuth() {
+            mActivity.runOnUiThread(mActivity::showBiometricPrompt);
         }
     }
 }
