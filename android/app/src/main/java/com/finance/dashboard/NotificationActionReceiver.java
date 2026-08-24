@@ -80,12 +80,13 @@ public class NotificationActionReceiver extends BroadcastReceiver {
 
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (responseCode >= 200 && responseCode < 300) {
+                        TransactionBackupStore.markSynced(context, rawMessage);
                         String msg = category != null
                                 ? "✅ Logged under " + category
                                 : "✅ Transaction logged to Dashboard";
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show();
                     } else {
-                        Toast.makeText(context, "⚠️ Webhook returned status " + responseCode, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(context, "⚠️ Server returned " + responseCode + ". Saved locally on device!", Toast.LENGTH_SHORT).show();
                     }
                 });
 

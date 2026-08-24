@@ -691,6 +691,21 @@
       <button id="btn-toggle-biometric" class="primary" style="width:100%" onclick="toggleBiometricLock()">Enable Fingerprint Lock</button>
     </div>
 
+    <!-- Android Offline Backup & Sync Panel -->
+    <div id="offline-sync-panel" class="card" style="display:none; margin-bottom:20px; padding:16px; background:linear-gradient(135deg, rgba(59,130,246,0.08), rgba(15,28,63,0.4)); border:1px solid rgba(59,130,246,0.2)">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+        <div style="display:flex; align-items:center; gap:8px">
+          <span style="font-size:18px">💾</span>
+          <strong>Local SMS Backup & Sync</strong>
+        </div>
+        <span class="badge blue">Protected</span>
+      </div>
+      <small style="color:var(--text-muted); display:block; margin-bottom:12px; line-height:1.4">
+        Every intercepted bank SMS is safely recorded in your device storage before upload. Tap below to sync any pending offline items.
+      </small>
+      <button class="primary" style="width:100%" onclick="syncOfflineTransactionsFromUI()">🔄 Sync Offline Transactions</button>
+    </div>
+
     <button class="primary" style="width:100%; margin-bottom:16px;" onclick="openAddCategoryModal()">+ Add Category</button>
     <div id="settings-category-list">
       <div class="card skeleton skeleton-card"></div>
@@ -1068,6 +1083,22 @@ function server(fnName, args = [], onSuccess = null, loadingMsg = null) {
 }
 
 async function loadData(silent = false) {
+  // 1. Instant Cache-First Paint: If first load, render cached dashboard immediately
+  if (!state.dashboard && !state.historyAppend) {
+    try {
+      const cachedStr = localStorage.getItem('cached_dashboard_data');
+      if (cachedStr) {
+        const cached = JSON.parse(cachedStr);
+        if (cached && cached.cycle && cached.dashboard && cached.budget) {
+          state.cycle = cached.cycle;
+          state.dashboard = cached.dashboard;
+          state.budget = cached.budget;
+          renderAll();
+        }
+      }
+    } catch (e) {}
+  }
+
   if (state.isLoading) return;
   state.isLoading = true;
   const historyResultsEl = document.getElementById('history-results');
@@ -1085,6 +1116,11 @@ async function loadData(silent = false) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     
+    // Sync Webhook Token with Android App
+    if (data.webhookToken && window.AndroidApp && typeof window.AndroidApp.setWebhookToken === 'function') {
+      window.AndroidApp.setWebhookToken(data.webhookToken);
+    }
+
     state.cycle = data.cycle;
     if (state.historyAppend && state.dashboard && data.dashboard.history) {
       data.dashboard.outgoing = [...state.dashboard.outgoing, ...data.dashboard.outgoing];
@@ -1093,6 +1129,17 @@ async function loadData(silent = false) {
     state.dashboard = data.dashboard;
     state.historyAppend = false;
     state.budget = data.budget;
+
+    // Cache latest state for instant 0ms startup
+    if (state.cycleOffset === 0 && !state.historyFilter && !state.historySearch) {
+      try {
+        localStorage.setItem('cached_dashboard_data', JSON.stringify({
+          cycle: data.cycle,
+          dashboard: data.dashboard,
+          budget: data.budget
+        }));
+      } catch (e) {}
+    }
     
     state.lastUpdated = new Date();
     const lu = document.getElementById('last-updated');
@@ -2761,18 +2808,35 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-// --- 10. BIOMETRIC SECURITY (ANDROID APP) ---
+// --- 10. BIOMETRIC SECURITY & OFFLINE SYNC (ANDROID APP) ---
 function initBiometricUI() {
-  if (window.AndroidApp && typeof window.AndroidApp.isBiometricSupported === 'function') {
-    try {
-      if (window.AndroidApp.isBiometricSupported()) {
-        const panel = document.getElementById('biometric-panel');
-        if (panel) panel.style.display = 'block';
-        updateBiometricUI();
+  if (window.AndroidApp) {
+    const offlinePanel = document.getElementById('offline-sync-panel');
+    if (offlinePanel) offlinePanel.style.display = 'block';
+
+    if (typeof window.AndroidApp.isBiometricSupported === 'function') {
+      try {
+        if (window.AndroidApp.isBiometricSupported()) {
+          const panel = document.getElementById('biometric-panel');
+          if (panel) panel.style.display = 'block';
+          updateBiometricUI();
+        }
+      } catch (e) {
+        console.warn('Biometric check notice:', e);
       }
-    } catch (e) {
-      console.warn('Biometric check notice:', e);
     }
+  }
+}
+
+function syncOfflineTransactionsFromUI() {
+  if (window.AndroidApp && typeof window.AndroidApp.syncOfflineTransactions === 'function') {
+    window.AndroidApp.syncOfflineTransactions();
+    setTimeout(() => {
+      loadData(true);
+      toast('🔄 Synced offline transactions with dashboard', 'success');
+    }, 1200);
+  } else {
+    toast('No offline transactions to sync', 'info');
   }
 }
 

@@ -52,6 +52,7 @@ public class SmsReceiver extends BroadcastReceiver {
         BankParser.ParsedTransaction tx = BankParser.parse(context, messageBody);
 
         if (tx.isMatched && tx.amount > 0) {
+            TransactionBackupStore.saveTransaction(context, messageBody, tx.amount, tx.merchant, tx.kind, tx.defaultCategory, "pending");
             showActionableNotification(context, tx, sender);
         }
     }

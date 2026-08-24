@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
+import crypto from 'node:crypto';
 import { supabase } from '@/lib/supabase';
 import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
 
@@ -27,7 +28,40 @@ export async function GET(req) {
       }
     }
 
-    // Helper to calculate cycle start/end dates and formatted label
+    const isOwner = user.email === 'kr.wn20@gmail.com';
+
+    // If primary owner, ensure legacy unassigned records are locked to owner's user_id
+    if (isOwner) {
+      await Promise.all([
+        supabase.from('categories').update({ user_id: user.id }).is('user_id', null),
+        supabase.from('transactions').update({ user_id: user.id }).is('user_id', null),
+        supabase.from('push_subscriptions').update({ user_id: user.id }).is('user_id', null)
+      ]).catch(e => console.warn('Auto-backfill notice:', e.message));
+    }
+
+    // Ensure user has a persistent webhook token
+    let userWebhookToken = null;
+    try {
+      const { data: tokenRecord } = await supabase
+        .from('user_webhook_tokens')
+        .select('token')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (tokenRecord?.token) {
+        userWebhookToken = tokenRecord.token;
+      } else {
+        const newToken = 'usr_' + crypto.randomBytes(16).toString('hex');
+        const { data: insertedToken } = await supabase
+          .from('user_webhook_tokens')
+          .insert([{ user_id: user.id, token: newToken }])
+          .select('token')
+          .maybeSingle();
+        userWebhookToken = insertedToken?.token || newToken;
+      }
+    } catch (tokenErr) {
+      console.warn('Webhook token retrieval warning:', tokenErr.message);
+    }// Helper to calculate cycle start/end dates and formatted label
     function getCycleBounds(offset) {
       let m = baseMonth + offset;
       let y = baseYear;
@@ -57,17 +91,6 @@ export async function GET(req) {
     const isCurrent = cycleOffset === 0;
     const isNext = cycleOffset > 0;
     const isPast = cycleOffset < 0;
-
-    const isOwner = user.email === 'kr.wn20@gmail.com';
-
-    // If primary owner, ensure legacy unassigned records are locked to owner's user_id
-    if (isOwner) {
-      await Promise.all([
-        supabase.from('categories').update({ user_id: user.id }).is('user_id', null),
-        supabase.from('transactions').update({ user_id: user.id }).is('user_id', null),
-        supabase.from('push_subscriptions').update({ user_id: user.id }).is('user_id', null)
-      ]).catch(e => console.warn('Auto-backfill notice:', e.message));
-    }
 
     // 2. Fetch Categories (Strictly scoped to user_id)
     let catQuery = supabase
@@ -446,7 +469,8 @@ export async function GET(req) {
           days: daysLeft
         },
         categories: returnCategories
-      }
+      },
+      webhookToken: userWebhookToken
     }, {
       headers: {
         'Cache-Control': 'private, no-cache, no-store, must-revalidate'

@@ -92,7 +92,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Check biometric lock on app open/resume if user enabled it
+        // 1. Sync any offline/pending SMS transactions
+        TransactionBackupStore.syncPendingTransactions(this);
+
+        // 2. Check biometric lock on app open/resume if user enabled it
         SharedPreferences prefs = getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
         if (prefs.getBoolean("biometric_lock_enabled", false) && isBiometricSupported()) {
             showBiometricPrompt();
@@ -360,6 +363,19 @@ public class MainActivity extends AppCompatActivity {
             mActivity.runOnUiThread(() -> {
                 SmsReceiver.showTestNotification(mActivity);
                 Toast.makeText(mActivity, "🔔 Test notification sent to status bar!", Toast.LENGTH_SHORT).show();
+            });
+        }
+
+        @JavascriptInterface
+        public String getOfflineBackupTransactions() {
+            return TransactionBackupStore.getSavedTransactionsJson(mActivity);
+        }
+
+        @JavascriptInterface
+        public void syncOfflineTransactions() {
+            TransactionBackupStore.syncPendingTransactions(mActivity);
+            mActivity.runOnUiThread(() -> {
+                Toast.makeText(mActivity, "🔄 Syncing offline transactions...", Toast.LENGTH_SHORT).show();
             });
         }
     }
