@@ -53,6 +53,102 @@
       --duration-modal: 260ms;
     }
 
+    /* Light Theme (Clean Silver / Slate Slate-Tone) */
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --bg-surface: #ffffff;
+      --surface: rgba(255, 255, 255, 0.9);
+      --surface-card: #ffffff;
+      --surface-hover: rgba(0, 0, 0, 0.04);
+      --surface-border: rgba(0, 0, 0, 0.08);
+      --surface-border-subtle: rgba(0, 0, 0, 0.04);
+      
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-glow: rgba(79, 70, 229, 0.2);
+      
+      --success: #059669;
+      --success-glow: rgba(5, 150, 105, 0.2);
+      --warning: #d97706;
+      --danger: #e11d48;
+      --danger-glow: rgba(225, 29, 72, 0.2);
+      
+      --text: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+
+      --shadow-bezel: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 4px 14px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+      --shadow-bezel-hero: 0 0 0 1px rgba(0, 0, 0, 0.07), 0 12px 28px -6px rgba(0, 0, 0, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    }
+    [data-theme="light"] .card {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    [data-theme="light"] .hero-card {
+      background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    [data-theme="light"] .hero-card h1 { color: #0f172a; }
+    [data-theme="light"] .bottom-nav {
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+    }
+    [data-theme="light"] .modal {
+      background: #ffffff;
+      color: #0f172a;
+    }
+    [data-theme="light"] input, [data-theme="light"] select, [data-theme="light"] textarea {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #0f172a;
+    }
+    [data-theme="light"] .cycle-nav-bar {
+      background: rgba(255, 255, 255, 0.85);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    [data-theme="light"] .cycle-nav-btn {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      color: #334155;
+    }
+
+    /* Privacy Mode: Frosted Blur on all financial numbers */
+    body.privacy-mode .amount,
+    body.privacy-mode #home-net-balance,
+    body.privacy-mode .income-text,
+    body.privacy-mode .vr-diff,
+    body.privacy-mode .summary-metric .val,
+    body.privacy-mode .chart-legend-val,
+    body.privacy-mode .chart-legend-pct,
+    body.privacy-mode .tx-card .amount {
+      filter: blur(8px) !important;
+      user-select: none !important;
+      transition: filter 180ms ease;
+    }
+
+    .icon-btn {
+      background: var(--surface-hover);
+      border: 1px solid var(--surface-border);
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      font-size: 15px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      transition: transform var(--duration-fast) var(--ease-spring), background-color var(--duration-fast) ease-out, border-color var(--duration-fast) ease-out;
+    }
+    .icon-btn:active { transform: scale(0.92); }
+    .icon-btn.active {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: rgba(99, 102, 241, 0.35);
+      color: var(--primary);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
@@ -62,6 +158,7 @@
       -webkit-tap-highlight-color: transparent;
       padding-bottom: 96px;
       letter-spacing: -0.01em;
+      transition: background-color 200ms ease, color 200ms ease;
     }
 
     .app-container {
@@ -695,9 +792,17 @@
   
   <div class="header-bar">
     <div style="display:flex; justify-content:space-between; align-items:center;">
-      <h1>Expenses</h1>
-      <div style="display:flex; align-items:center; gap:10px">
-        <small id="last-updated" style="font-size:11px; color:var(--text-muted)">Updating...</small>
+      <div style="display:flex; align-items:center; gap:8px">
+        <h1>Expenses</h1>
+        <small id="last-updated" style="font-size:11px; color:var(--text-muted); margin-left:4px">Updating...</small>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <button id="privacy-toggle-btn" class="icon-btn" onclick="togglePrivacyMode()" title="Toggle Privacy (Blur Numbers)">
+          <span id="privacy-icon">👁️</span>
+        </button>
+        <button id="theme-toggle-btn" class="icon-btn" onclick="toggleThemeMode()" title="Toggle Dark / Light Theme">
+          <span id="theme-icon">🌙</span>
+        </button>
         <button id="user-profile-avatar-btn" class="avatar-btn" onclick="openUserHubModal()" title="Account & User Hub">
           <span id="user-avatar-initial">K</span>
         </button>
@@ -733,7 +838,7 @@
       <div class="card skeleton skeleton-card"></div>
     </div>
 
-    <button onclick="openSummaryModal()" style="width:100%; margin-bottom:16px; background:linear-gradient(135deg, rgba(138,43,226,0.15), rgba(99,102,241,0.15)); border:1px solid rgba(138,43,226,0.3); border-radius:12px; padding:12px; font-size:14px; font-weight:600; color:var(--text); display:flex; align-items:center; justify-content:center; gap:8px">📊 View Full Summary</button>
+    <button onclick="openSummaryModal()" style="width:100%; margin-bottom:16px; background:linear-gradient(135deg, rgba(99,102,241,0.12), rgba(15,23,42,0.6)); border:1px solid rgba(99,102,241,0.25); border-radius:14px; padding:12px; font-size:13px; font-weight:600; color:var(--text); display:flex; align-items:center; justify-content:center; gap:8px">📊 View Full Summary</button>
 
     <div id="home-budget-alerts" class="budget-alert">⚠️ Over Budget Alert: One or more categories have exceeded their planned limit.</div>
 
@@ -780,57 +885,15 @@
     </div>
   </div>
 
-  <!-- SETTINGS PAGE -->
-  <div id="page-settings" class="page">
-    <!-- Push Notifications Panel -->
-    <div class="card" style="margin-bottom:20px; padding:16px; background:linear-gradient(135deg, rgba(138,43,226,0.08), rgba(15,28,63,0.4)); border:1px solid rgba(138,43,226,0.2)">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-        <div style="display:flex; align-items:center; gap:8px">
-          <span style="font-size:18px">🔔</span>
-          <strong>Push Notifications</strong>
-        </div>
-        <span id="push-status-badge" class="badge blue">Checking...</span>
+  <!-- CATEGORIES PAGE -->
+  <div id="page-categories" class="page">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <div>
+        <h2 style="margin-bottom:2px">Budget Categories</h2>
+        <small style="color:var(--text-muted)">Manage planned allocations & drag to reorder</small>
       </div>
-      <small style="color:var(--text-muted); display:block; margin-bottom:12px; line-height:1.4">
-        Receive native alerts on Android for: budget warnings (&gt;80%), 5+ uncategorized transactions, balance &lt; 10k EGP, and daily days-left countdown.
-      </small>
-      <div class="flex-gap">
-        <button id="btn-toggle-push" class="primary" style="flex:1" onclick="togglePushNotifications()">Enable Notifications</button>
-        <button id="btn-test-push" class="alt" onclick="sendTestPush()" style="display:none">🔔 Test Alert</button>
-      </div>
+      <button class="primary" onclick="openAddCategoryModal()" style="padding:8px 14px; font-size:12px">+ Add Category</button>
     </div>
-
-    <!-- Biometric Security Panel (Android App Only) -->
-    <div id="biometric-panel" class="card" style="display:none; margin-bottom:20px; padding:16px; background:linear-gradient(135deg, rgba(34,197,94,0.08), rgba(15,28,63,0.4)); border:1px solid rgba(34,197,94,0.2)">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-        <div style="display:flex; align-items:center; gap:8px">
-          <span style="font-size:18px">🔐</span>
-          <strong>Fingerprint App Lock</strong>
-        </div>
-        <span id="biometric-status-badge" class="badge">Disabled</span>
-      </div>
-      <small style="color:var(--text-muted); display:block; margin-bottom:12px; line-height:1.4">
-        Require fingerprint or screen lock verification when opening the Financial Dashboard.
-      </small>
-      <button id="btn-toggle-biometric" class="primary" style="width:100%" onclick="toggleBiometricLock()">Enable Fingerprint Lock</button>
-    </div>
-
-    <!-- Android Offline Backup & Sync Panel -->
-    <div id="offline-sync-panel" class="card" style="display:none; margin-bottom:20px; padding:16px; background:linear-gradient(135deg, rgba(59,130,246,0.08), rgba(15,28,63,0.4)); border:1px solid rgba(59,130,246,0.2)">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-        <div style="display:flex; align-items:center; gap:8px">
-          <span style="font-size:18px">💾</span>
-          <strong>Local SMS Backup & Sync</strong>
-        </div>
-        <span class="badge blue">Protected</span>
-      </div>
-      <small style="color:var(--text-muted); display:block; margin-bottom:12px; line-height:1.4">
-        Every intercepted bank SMS is safely recorded in your device storage before upload. Tap below to sync any pending offline items.
-      </small>
-      <button class="primary" style="width:100%" onclick="syncOfflineTransactionsFromUI()">🔄 Sync Offline Transactions</button>
-    </div>
-
-    <button class="primary" style="width:100%; margin-bottom:16px;" onclick="openAddCategoryModal()">+ Add Category</button>
     <div id="settings-category-list">
       <div class="card skeleton skeleton-card"></div>
       <div class="card skeleton skeleton-card"></div>
@@ -865,9 +928,9 @@
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
     History
   </button>
-  <button class="nav-btn" data-target="page-settings">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-    Settings
+  <button class="nav-btn" data-target="page-categories" id="nav-btn-categories">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+    Categories
   </button>
   <button class="nav-btn" data-target="page-insights">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
@@ -896,68 +959,105 @@
       <button class="modal-close" onclick="closeModalForce('modal-user-hub')">&times;</button>
     </div>
 
-    <!-- 1. SECURITY & APP LOCK -->
+    <!-- 1. APPEARANCE & PRIVACY -->
     <div style="margin-top:16px; margin-bottom:16px;">
-      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">🔐 Biometric Security & App Lock</h3>
+      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">🎨 Appearance & Privacy</h3>
       <div class="card" style="padding:14px; background:rgba(30,41,59,0.5)">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+          <div>
+            <strong>Theme Mode</strong>
+            <small style="color:var(--text-muted); display:block; font-size:11px">Dark OLED, Clean Light, or Auto</small>
+          </div>
+          <div class="toggle-group" style="margin-bottom:0; width:auto">
+            <button id="theme-btn-dark" class="active" onclick="setAppTheme('dark')" style="padding:6px 12px; font-size:12px">🌙 Dark</button>
+            <button id="theme-btn-light" onclick="setAppTheme('light')" style="padding:6px 12px; font-size:12px">☀️ Light</button>
+          </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--surface-border); padding-top:10px">
+          <div>
+            <strong>Blur Financial Numbers 👁️</strong>
+            <small style="color:var(--text-muted); display:block; font-size:11px">Mask balances & transaction amounts in public</small>
+          </div>
+          <button id="hub-privacy-toggle-btn" class="alt" style="padding:6px 12px; font-size:12px" onclick="togglePrivacyMode()">
+            <span id="hub-privacy-text">Enable Blur</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. SECURITY & NOTIFICATIONS -->
+    <div style="margin-bottom:16px;">
+      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">🔐 Security & Push Alerts</h3>
+      <div class="card" style="padding:14px; background:rgba(30,41,59,0.5); margin-bottom:8px">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
           <strong>Fingerprint / Screen Lock</strong>
           <span id="hub-biometric-badge" class="badge">Disabled</span>
         </div>
-        <small style="color:var(--text-muted); display:block; margin-bottom:10px; font-size:12px; line-height:1.4">Require fingerprint or device PIN when opening Financial Dashboard.</small>
+        <small style="color:var(--text-muted); display:block; margin-bottom:10px; font-size:12px; line-height:1.4">Require biometric or device PIN verification when launching.</small>
         <button id="hub-btn-biometric" class="primary" style="width:100%" onclick="toggleBiometricLock()">Enable Fingerprint Lock</button>
+      </div>
+
+      <div class="card" style="padding:14px; background:rgba(30,41,59,0.5)">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+          <strong>Push Notifications</strong>
+          <span id="hub-push-status-badge" class="badge blue">Ready</span>
+        </div>
+        <small style="color:var(--text-muted); display:block; margin-bottom:10px; font-size:12px; line-height:1.4">Receive alerts for budget warnings (>80%), daily updates, and low balance.</small>
+        <button id="hub-btn-push" class="alt" style="width:100%" onclick="togglePushNotifications()">Manage Push Alerts</button>
       </div>
     </div>
 
-    <!-- 2. SUPPORTED BANKS & CUSTOM SMS RULES -->
+    <!-- 3. CUSTOM BANK SENDERS & SMART SMS PARSER -->
     <div style="margin-bottom:16px;">
-      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">🏦 Egyptian Banks & SMS Parser</h3>
+      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">🏦 Custom Bank Senders & SMS Rules</h3>
       
-      <!-- Supported Banks Catalog -->
-      <div class="card" style="padding:14px; background:rgba(30,41,59,0.5); margin-bottom:12px;">
-        <strong style="font-size:12px; display:block; margin-bottom:8px">Built-in Egyptian Banks & Wallets:</strong>
-        <div style="display:flex; flex-wrap:wrap; gap:6px;">
-          <span class="badge blue">📱 InstaPay (Sent & Received)</span>
-          <span class="badge purple">💳 CIB (Debit & Credit)</span>
-          <span class="badge green">💳 NBE (National Bank)</span>
-          <span class="badge yellow">💳 Banque Misr</span>
-          <span class="badge">💳 QNB AlAhli</span>
-          <span class="badge red">📱 Vodafone Cash</span>
-          <span class="badge">💰 Salary Deposit</span>
+      <!-- Quick Sender Suggestions from History -->
+      <div class="card" style="padding:12px; background:rgba(30,41,59,0.5); margin-bottom:12px;">
+        <strong style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); display:block; margin-bottom:6px">⚡ Suggested Senders (From SMS & History):</strong>
+        <div id="hub-suggested-senders" style="display:flex; flex-wrap:wrap; gap:6px;">
+          <span class="chip" style="cursor:pointer" onclick="selectSuggestedSender('WE Pay', 'Utilities')">+ WE Pay</span>
+          <span class="chip" style="cursor:pointer" onclick="selectSuggestedSender('FABMISR', 'Uncategorized')">+ FABMISR</span>
+          <span class="chip" style="cursor:pointer" onclick="selectSuggestedSender('Fawry', 'Bills')">+ Fawry</span>
+          <span class="chip" style="cursor:pointer" onclick="selectSuggestedSender('Vodafone Cash', 'Wallet')">+ Vodafone Cash</span>
+          <span class="chip" style="cursor:pointer" onclick="selectSuggestedSender('InstaPay', 'Transfers')">+ InstaPay</span>
+          <span class="chip" style="cursor:pointer" onclick="selectSuggestedSender('CIB', 'Uncategorized')">+ CIB</span>
+          <span class="chip" style="cursor:pointer" onclick="selectSuggestedSender('Banque Misr', 'Uncategorized')">+ Banque Misr</span>
+          <span class="chip" style="cursor:pointer" onclick="selectSuggestedSender('NBE', 'Uncategorized')">+ NBE</span>
         </div>
       </div>
 
       <!-- Live SMS Rule Tester & Custom Rule Creator -->
-      <div class="card" style="padding:14px; background:linear-gradient(135deg, rgba(138,43,226,0.08), rgba(15,28,63,0.5)); border:1px solid rgba(138,43,226,0.25)">
-        <strong style="font-size:13px; display:block; margin-bottom:4px">🧪 Visual SMS Rule Builder</strong>
-        <small style="color:var(--text-muted); display:block; margin-bottom:10px; font-size:12px">Paste any bank SMS below to test regex extraction and save a custom tag rule.</small>
+      <div class="card" style="padding:14px; background:linear-gradient(135deg, rgba(99,102,241,0.08), rgba(15,28,63,0.5)); border:1px solid rgba(99,102,241,0.25)">
+        <strong style="font-size:13px; display:block; margin-bottom:4px">🧪 Visual SMS Rule & Bank Sender Builder</strong>
+        <small style="color:var(--text-muted); display:block; margin-bottom:10px; font-size:12px">Add custom bank sender names (case-insensitive, fuzzy punctuation) and test against sample SMS.</small>
         
-        <textarea id="hub-sms-input" rows="3" placeholder="Paste sample bank SMS here... e.g. Paid EGP 350.00 at Gourmet on card 1234" style="width:100%; font-size:12px; margin-bottom:8px; border-radius:8px; padding:8px; background:rgba(15,23,42,0.8); color:#fff; border:1px solid var(--surface-border)" oninput="testCustomSmsRule()"></textarea>
+        <textarea id="hub-sms-input" rows="3" placeholder="Paste sample bank SMS here... e.g. Paid EGP 350.00 at Gourmet via WE Pay" style="width:100%; font-size:12px; margin-bottom:8px; border-radius:8px; padding:8px; background:rgba(15,23,42,0.8); color:var(--text); border:1px solid var(--surface-border)" oninput="testCustomSmsRule()"></textarea>
         
         <!-- Live Detection Output -->
         <div id="hub-sms-preview" style="background:rgba(0,0,0,0.3); padding:8px 10px; border-radius:8px; font-size:12px; margin-bottom:10px; border:1px dashed var(--surface-border)">
           <div style="color:var(--text-muted); font-size:11px">Live Detection Preview:</div>
-          <div id="hub-preview-result" style="margin-top:4px; font-weight:600; color:#c084fc">Paste an SMS above to preview...</div>
+          <div id="hub-preview-result" style="margin-top:4px; font-weight:600; color:#818cf8">Paste an SMS above to preview...</div>
         </div>
 
         <div style="display:flex; gap:8px; margin-bottom:8px">
           <div style="flex:1">
-            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px">Rule Name / Keyword</label>
-            <input id="hub-rule-keyword" type="text" placeholder="e.g. Gourmet" style="width:100%; font-size:12px; padding:6px 8px;">
+            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px">Bank Sender / Keyword</label>
+            <input id="hub-rule-keyword" type="text" placeholder="e.g. WE Pay, FAB, Fawry" style="width:100%; font-size:12px; padding:6px 8px;" oninput="onSenderInputChanged(this.value)">
+            <div id="hub-sender-fuzzy-hint" style="font-size:10px; color:#38bdf8; margin-top:2px; display:none"></div>
           </div>
           <div style="flex:1">
             <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px">Default Category</label>
             <select id="hub-rule-category" style="width:100%; font-size:12px; padding:6px 8px;"></select>
           </div>
         </div>
-        <button class="primary" style="width:100%" onclick="saveCustomSmsRule()">💾 Save Custom SMS Rule</button>
+        <button class="primary" style="width:100%" onclick="saveCustomSmsRule()">💾 Save Custom Bank Sender / Rule</button>
       </div>
 
       <!-- Active Custom Rules -->
       <div id="hub-custom-rules-container" style="margin-top:10px"></div>
     </div>
 
-    <!-- 3. OFFLINE BACKUP & DIAGNOSTICS -->
+    <!-- 4. OFFLINE BACKUP & DIAGNOSTICS -->
     <div style="margin-bottom:16px;">
       <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">💾 Local Storage & Diagnostics</h3>
       <div class="card" style="padding:14px; background:rgba(30,41,59,0.5)">
@@ -969,7 +1069,7 @@
       </div>
     </div>
 
-    <!-- 4. SIGN OUT -->
+    <!-- 5. SIGN OUT -->
     <button class="alt" style="width:100%; color:var(--danger); border-color:rgba(239,68,68,0.3); padding:10px" onclick="logout()">Sign Out of Account</button>
   </div>
 </div>
@@ -3127,7 +3227,71 @@ function toggleBiometricLock() {
   }
 }
 
-// --- 11. USER HUB & VISUAL SMS RULE BUILDER ---
+// --- 11. THEME & PRIVACY MODE (BLUR NUMBERS) ---
+function initThemeAndPrivacy() {
+  // Theme initialization
+  const savedTheme = localStorage.getItem('app_theme') || 'dark';
+  setAppTheme(savedTheme, false);
+
+  // Privacy Mode initialization
+  const isPrivacy = localStorage.getItem('privacy_mode') === 'true';
+  if (isPrivacy) {
+    document.body.classList.add('privacy-mode');
+    updatePrivacyUI(true);
+  }
+}
+
+function setAppTheme(theme, showToast = true) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('app_theme', theme);
+
+  const themeIcon = document.getElementById('theme-icon');
+  if (themeIcon) themeIcon.textContent = theme === 'light' ? '☀️' : '🌙';
+
+  const btnDark = document.getElementById('theme-btn-dark');
+  const btnLight = document.getElementById('theme-btn-light');
+  if (btnDark && btnLight) {
+    btnDark.classList.toggle('active', theme === 'dark');
+    btnLight.classList.toggle('active', theme === 'light');
+  }
+
+  // Set meta theme-color
+  const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (metaThemeColor) {
+    metaThemeColor.setAttribute('content', theme === 'light' ? '#f8fafc' : '#07090e');
+  }
+
+  if (showToast) toast(`🎨 Switched to ${theme} theme`, 'info');
+}
+
+function toggleThemeMode() {
+  const current = localStorage.getItem('app_theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  setAppTheme(next, true);
+}
+
+function togglePrivacyMode() {
+  const isPrivacy = document.body.classList.toggle('privacy-mode');
+  localStorage.setItem('privacy_mode', isPrivacy ? 'true' : 'false');
+  updatePrivacyUI(isPrivacy);
+  toast(isPrivacy ? '🙈 Privacy Mode Active: Financial numbers blurred' : '👁️ Privacy Mode Disabled: Numbers visible', 'info');
+}
+
+function updatePrivacyUI(isPrivacy) {
+  const privacyIcon = document.getElementById('privacy-icon');
+  const privacyBtn = document.getElementById('privacy-toggle-btn');
+  const hubPrivacyText = document.getElementById('hub-privacy-text');
+
+  if (privacyIcon) privacyIcon.textContent = isPrivacy ? '🙈' : '👁️';
+  if (privacyBtn) privacyBtn.classList.toggle('active', isPrivacy);
+  if (hubPrivacyText) hubPrivacyText.textContent = isPrivacy ? 'Disable Blur' : 'Enable Blur';
+}
+
+// --- 12. USER HUB & SMART FUZZY BANK SMS PARSER ---
+function normalizeSender(s) {
+  return (s || '').toLowerCase().replace(/[\s\-_.,/\\#&@]/g, '');
+}
+
 function openUserHubModal() {
   const modal = document.getElementById('modal-user-hub');
   if (!modal) return;
@@ -3153,10 +3317,85 @@ function openUserHubModal() {
   // Sync Biometric Badge in Hub
   updateBiometricUI();
 
+  // Populate dynamic suggested senders from history
+  populateSuggestedSendersFromHistory();
+
   // Render Custom Rules List
   renderCustomSmsRulesList();
 
   openModal('modal-user-hub');
+}
+
+function populateSuggestedSendersFromHistory() {
+  const container = document.getElementById('hub-suggested-senders');
+  if (!container) return;
+
+  const detectedSenders = new Map();
+  // Standard Egyptian Banks & Wallets with standard punctuation
+  detectedSenders.set('WE Pay', { name: 'WE Pay', category: 'Utilities' });
+  detectedSenders.set('FABMISR', { name: 'FABMISR', category: 'Uncategorized' });
+  detectedSenders.set('Fawry', { name: 'Fawry', category: 'Bills' });
+  detectedSenders.set('Vodafone Cash', { name: 'Vodafone Cash', category: 'Wallet' });
+  detectedSenders.set('InstaPay', { name: 'InstaPay', category: 'Transfers' });
+  detectedSenders.set('CIB', { name: 'CIB', category: 'Uncategorized' });
+  detectedSenders.set('Banque Misr', { name: 'Banque Misr', category: 'Uncategorized' });
+  detectedSenders.set('NBE', { name: 'NBE', category: 'Uncategorized' });
+  detectedSenders.set('QNB AlAhli', { name: 'QNB AlAhli', category: 'Uncategorized' });
+  detectedSenders.set('Etisalat Cash', { name: 'Etisalat Cash', category: 'Wallet' });
+  detectedSenders.set('Orange Cash', { name: 'Orange Cash', category: 'Wallet' });
+
+  // Extract from loaded transaction history
+  if (state.dashboard) {
+    const allTx = [...(state.dashboard.outgoing || []), ...(state.dashboard.incoming || [])];
+    allTx.forEach(t => {
+      const src = (t.source || '').trim();
+      if (src && src.length > 1 && !detectedSenders.has(src)) {
+        detectedSenders.set(src, { name: src, category: t.category || 'Uncategorized' });
+      }
+    });
+  }
+
+  const chipsHtml = Array.from(detectedSenders.values()).map(s => {
+    const escName = esc(s.name).replace(/'/g, "\\'");
+    const escCat = esc(s.category).replace(/'/g, "\\'");
+    return `<span class="chip" style="cursor:pointer" onclick="selectSuggestedSender('${escName}', '${escCat}')">+ ${esc(s.name)}</span>`;
+  }).join('');
+
+  container.innerHTML = chipsHtml;
+}
+
+function selectSuggestedSender(name, category) {
+  const keywordInput = document.getElementById('hub-rule-keyword');
+  const catSelect = document.getElementById('hub-rule-category');
+  if (keywordInput) keywordInput.value = name;
+  if (catSelect && category) catSelect.value = category;
+  onSenderInputChanged(name);
+  testCustomSmsRule();
+}
+
+function onSenderInputChanged(val) {
+  const hintEl = document.getElementById('hub-sender-fuzzy-hint');
+  if (!hintEl) return;
+
+  const raw = (val || '').trim();
+  if (!raw) {
+    hintEl.style.display = 'none';
+    return;
+  }
+
+  const normInput = normalizeSender(raw);
+  const knownSenders = [
+    'WE Pay', 'FABMISR', 'Fawry', 'Vodafone Cash', 'InstaPay', 
+    'CIB', 'Banque Misr', 'NBE', 'QNB AlAhli', 'Etisalat Cash', 'Orange Cash'
+  ];
+
+  const matched = knownSenders.find(k => normalizeSender(k) === normInput || (normInput.length >= 3 && normalizeSender(k).includes(normInput)));
+  if (matched && matched !== raw) {
+    hintEl.style.display = 'block';
+    hintEl.innerHTML = `💡 Exact sender captured in SMS: <strong style="cursor:pointer; text-decoration:underline" onclick="selectSuggestedSender('${matched}', '')">${matched}</strong> (tap to apply)`;
+  } else {
+    hintEl.style.display = 'none';
+  }
 }
 
 function testCustomSmsRule() {
@@ -3168,7 +3407,7 @@ function testCustomSmsRule() {
   const text = input.value.trim();
   if (!text) {
     preview.textContent = 'Paste an SMS above to preview...';
-    preview.style.color = '#c084fc';
+    preview.style.color = '#818cf8';
     return;
   }
 
@@ -3181,21 +3420,34 @@ function testCustomSmsRule() {
 
   // Extract merchant / source
   let merchant = 'Unknown / Card';
-  const merchMatch = text.match(/@\s*([^,\n.]+)/i) || text.match(/(?:at|لدى|from|إلى)\s+([^,\n.]+)/i);
+  const merchMatch = text.match(/@\s*([^,\n.]+)/i) || text.match(/(?:at|لدى|from|إلى|via|بواسطة)\s+([^,\n.]+)/i);
   if (merchMatch) {
     merchant = merchMatch[1].trim();
+  }
+
+  // Check custom sender rules with fuzzy matching
+  const rules = getStoredCustomRules();
+  const normText = normalizeSender(text);
+  let matchedRule = null;
+  for (const r of rules) {
+    if (r.keyword && normText.includes(normalizeSender(r.keyword))) {
+      matchedRule = r;
+      break;
+    }
   }
 
   const isIncome = /(?:received|recieved|إيداع|اضافة راتبك|استلام|refund)/i.test(text);
   const kind = isIncome ? 'Incoming' : 'Outgoing';
 
   if (amount > 0) {
-    preview.innerHTML = `✅ <span style="color:#4ade80">EGP ${amount.toFixed(2)}</span> • <span style="color:#38bdf8">${merchant}</span> • <em>${kind}</em>`;
+    const ruleTag = matchedRule ? `<span class="badge blue">Rule Matched: ${matchedRule.name} ➔ ${matchedRule.category}</span>` : '';
+    preview.innerHTML = `✅ <span style="color:#10b981">EGP ${amount.toFixed(2)}</span> • <span style="color:#38bdf8">${merchant}</span> • <em>${kind}</em> ${ruleTag}`;
     if (keywordInput && !keywordInput.value && merchant !== 'Unknown / Card') {
       keywordInput.value = merchant.split(' ')[0];
+      onSenderInputChanged(keywordInput.value);
     }
   } else {
-    preview.innerHTML = `⚠️ <span style="color:#f87171">No amount detected yet. Ensure amount (e.g. EGP 100) is present.</span>`;
+    preview.innerHTML = `⚠️ <span style="color:#f43f5e">No amount detected. Ensure currency/amount (e.g. EGP 350) is in the message.</span>`;
   }
 }
 
@@ -3216,7 +3468,7 @@ function saveCustomSmsRule() {
   const category = catSelect ? catSelect.value : '';
 
   if (!keyword) {
-    toast('Please enter a keyword or merchant name for the rule', 'error');
+    toast('Please enter a bank sender name or merchant keyword', 'error');
     return;
   }
 
@@ -3246,9 +3498,10 @@ function saveCustomSmsRule() {
 
   if (keywordInput) keywordInput.value = '';
   if (smsInput) smsInput.value = '';
+  onSenderInputChanged('');
   testCustomSmsRule();
   renderCustomSmsRulesList();
-  toast(`✅ Rule saved: "${keyword}" ➔ ${category}`, 'success');
+  toast(`✅ Rule saved: "${keyword}" (Fuzzy Match) ➔ ${category || 'Uncategorized'}`, 'success');
 }
 
 function deleteCustomSmsRule(ruleId) {
@@ -3276,18 +3529,19 @@ function renderCustomSmsRulesList() {
 
   const rules = getStoredCustomRules();
   if (rules.length === 0) {
-    container.innerHTML = `<small style="color:var(--text-muted); display:block; text-align:center; padding:8px">No custom SMS rules saved yet.</small>`;
+    container.innerHTML = `<small style="color:var(--text-muted); display:block; text-align:center; padding:8px">No custom bank rules saved yet.</small>`;
     return;
   }
 
   container.innerHTML = `
-    <div style="font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:6px">Active Custom Rules (${rules.length}):</div>
+    <div style="font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:6px">Active Custom Bank Senders & Rules (${rules.length}):</div>
     <div style="display:flex; flex-direction:column; gap:6px">
       ${rules.map(r => `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6); padding:8px 12px; border-radius:8px; border:1px solid var(--surface-border)">
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6); padding:8px 12px; border-radius:10px; border:1px solid var(--surface-border)">
           <div>
-            <strong style="font-size:12px; color:#fff">${r.name}</strong>
-            <span style="font-size:11px; color:var(--text-muted); margin-left:6px">➔ ${r.category || 'Uncategorized'}</span>
+            <strong style="font-size:12px; color:var(--text)">${esc(r.name)}</strong>
+            <span style="font-size:11px; color:var(--text-muted); margin-left:6px">➔ ${esc(r.category || 'Uncategorized')}</span>
+            <small style="display:block; font-size:10px; color:#38bdf8">Fuzzy match: ${normalizeSender(r.keyword)}</small>
           </div>
           <button class="modal-close" style="font-size:16px; color:var(--danger); padding:2px 6px" onclick="deleteCustomSmsRule('${r.id}')" title="Delete rule">&times;</button>
         </div>
@@ -3316,6 +3570,7 @@ function copyWebhookUrl() {
 
 // Kickoff
 window.onload = async () => {
+  initThemeAndPrivacy();
   if (await checkAuth()) {
     loadData();
     initPushNotifications();
