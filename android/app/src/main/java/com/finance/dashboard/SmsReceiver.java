@@ -49,7 +49,7 @@ public class SmsReceiver extends BroadcastReceiver {
         }
 
         String messageBody = fullMsg.toString();
-        BankParser.ParsedTransaction tx = BankParser.parse(messageBody);
+        BankParser.ParsedTransaction tx = BankParser.parse(context, messageBody);
 
         if (tx.isMatched && tx.amount > 0) {
             showActionableNotification(context, tx, sender);
@@ -90,17 +90,22 @@ public class SmsReceiver extends BroadcastReceiver {
         confirmIntent.putExtra("amount", tx.amount);
         confirmIntent.putExtra("merchant", tx.merchant);
         confirmIntent.putExtra("kind", tx.kind);
+        if (tx.defaultCategory != null && !tx.defaultCategory.isEmpty()) {
+            confirmIntent.putExtra("category", tx.defaultCategory);
+        }
         PendingIntent confirmPending = PendingIntent.getBroadcast(
                 context, notificationId * 10 + 1, confirmIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
         );
 
-        // Quick Category Chip 1: Groceries
+        // Quick Category Chip 1: Groceries (or custom if set)
+        String chip1Name = (tx.defaultCategory != null && !tx.defaultCategory.isEmpty()) ? tx.defaultCategory : "Groceries & Supermarket";
+        String chip1Label = (tx.defaultCategory != null && !tx.defaultCategory.isEmpty()) ? "🏷️ " + chip1Name : "🛒 Groceries";
         Intent grocIntent = new Intent(context, NotificationActionReceiver.class);
         grocIntent.setAction(ACTION_CATEGORY);
         grocIntent.putExtra("notification_id", notificationId);
         grocIntent.putExtra("raw_message", tx.rawMessage);
-        grocIntent.putExtra("category", "Groceries & Supermarket");
+        grocIntent.putExtra("category", chip1Name);
         PendingIntent grocPending = PendingIntent.getBroadcast(
                 context, notificationId * 10 + 2, grocIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
@@ -141,7 +146,7 @@ public class SmsReceiver extends BroadcastReceiver {
                 .setAutoCancel(true)
                 .setContentIntent(tapPendingIntent)
                 .addAction(android.R.drawable.ic_menu_save, "✅ Confirm", confirmPending)
-                .addAction(android.R.drawable.ic_menu_agenda, "🛒 Groceries", grocPending)
+                .addAction(android.R.drawable.ic_menu_agenda, chip1Label, grocPending)
                 .addAction(android.R.drawable.ic_menu_agenda, "🍔 Dining", foodPending)
                 .addAction(android.R.drawable.ic_menu_close_clear_cancel, "❌ Dismiss", dismissPending);
 

@@ -1,5 +1,11 @@
 package com.finance.dashboard;
 
+import android.content.Context;
+import android.content.SharedPreferences;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -12,25 +18,57 @@ public class BankParser {
         public String kind = "outgoing"; // outgoing | incoming
         public String note = "";
         public String rawMessage = "";
+        public String defaultCategory = "";
 
-        public ParsedTransaction(boolean isMatched, double amount, String merchant, String kind, String note, String rawMessage) {
+        public ParsedTransaction(boolean isMatched, double amount, String merchant, String kind, String note, String rawMessage, String defaultCategory) {
             this.isMatched = isMatched;
             this.amount = amount;
             this.merchant = merchant;
             this.kind = kind;
             this.note = note;
             this.rawMessage = rawMessage;
+            this.defaultCategory = defaultCategory;
+        }
+
+        public ParsedTransaction(boolean isMatched, double amount, String merchant, String kind, String note, String rawMessage) {
+            this(isMatched, amount, merchant, kind, note, rawMessage, "");
         }
     }
 
-    public static ParsedTransaction parse(String body) {
+    public static ParsedTransaction parse(Context context, String body) {
         if (body == null || body.trim().isEmpty()) {
             return new ParsedTransaction(false, 0, "", "outgoing", "", "");
         }
 
         String msg = body.trim();
 
-        // 1. Salary Deposit (Arabic)
+        // 1. Check Dynamic Custom Rules Cached in SharedPreferences (Hybrid Approach)
+        if (context != null) {
+            SharedPreferences prefs = context.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+            String customRulesJson = prefs.getString("custom_sms_rules", "");
+            if (!customRulesJson.isEmpty()) {
+                try {
+                    JSONArray rules = new JSONArray(customRulesJson);
+                    for (int i = 0; i < rules.length(); i++) {
+                        JSONObject rule = rules.getJSONObject(i);
+                        String keyword = rule.optString("keyword", "");
+                        if (!keyword.isEmpty() && msg.toLowerCase().contains(keyword.toLowerCase())) {
+                            double amt = extractGenericAmount(msg);
+                            if (amt > 0) {
+                                String name = rule.optString("name", keyword);
+                                String kind = rule.optString("kind", "outgoing");
+                                String category = rule.optString("category", "");
+                                return new ParsedTransaction(true, amt, name, kind, "Custom Rule: " + name, msg, category);
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // 2. Built-in Egyptian Bank Rules (Default Fallback)
+
+        // A. Salary Deposit (Arabic)
         if (Pattern.compile("اضافة راتبك|إضافة راتبك", Pattern.CASE_INSENSITIVE).matcher(msg).find()) {
             double amt = extractAmount(msg, "بمبلغ\\s*([\\d,.]+)\\s*EGP");
             if (amt <= 0) amt = extractAmount(msg, "([\\d,.]+)\\s*EGP");
@@ -39,7 +77,7 @@ public class BankParser {
             }
         }
 
-        // 2. Instapay Transfer Sent (Outgoing)
+        // B. Instapay Transfer Sent (Outgoing)
         if (Pattern.compile("IPN transfer sent", Pattern.CASE_INSENSITIVE).matcher(msg).find()) {
             double amt = extractAmount(msg, "amount of EGP\\s*([\\d,.]+)");
             if (amt <= 0) amt = extractAmount(msg, "EGP\\s*([\\d,.]+)");
@@ -50,7 +88,7 @@ public class BankParser {
             }
         }
 
-        // 3. Instapay Transfer Received (Incoming)
+        // C. Instapay Transfer Received (Incoming)
         if (Pattern.compile("IPN transfer re(ceived|cieved)", Pattern.CASE_INSENSITIVE).matcher(msg).find()) {
             double amt = extractAmount(msg, "amount of EGP\\s*([\\d,.]+)");
             if (amt <= 0) amt = extractAmount(msg, "EGP\\s*([\\d,.]+)");
@@ -61,7 +99,7 @@ public class BankParser {
             }
         }
 
-        // 4. Debit Card Transaction
+        // D. Debit Card Transaction
         if (Pattern.compile("Your Debit Card", Pattern.CASE_INSENSITIVE).matcher(msg).find()) {
             double amt = extractAmount(msg, "transaction of EGP\\s*([\\d,.]+)");
             if (amt <= 0) amt = extractAmount(msg, "EGP\\s*([\\d,.]+)");
@@ -74,7 +112,7 @@ public class BankParser {
             }
         }
 
-        // 5. Credit Card Transaction
+        // E. Credit Card Transaction
         if (Pattern.compile("Your Credit Card", Pattern.CASE_INSENSITIVE).matcher(msg).find()) {
             double amt = extractAmount(msg, "transaction of EGP\\s*([\\d,.]+)");
             if (amt <= 0) amt = extractAmount(msg, "EGP\\s*([\\d,.]+)");
@@ -87,7 +125,7 @@ public class BankParser {
             }
         }
 
-        // 6. Refunds / Reversals
+        // F. Refunds / Reversals
         if (Pattern.compile("Reversed|Refunded|استرجاع", Pattern.CASE_INSENSITIVE).matcher(msg).find()) {
             double amt = extractAmount(msg, "EGP\\s*([\\d,.]+)");
             if (amt <= 0) amt = extractAmount(msg, "([\\d,.]+)\\s*EGP");
@@ -97,6 +135,17 @@ public class BankParser {
         }
 
         return new ParsedTransaction(false, 0, "", "outgoing", "", msg);
+    }
+
+    public static ParsedTransaction parse(String body) {
+        return parse(null, body);
+    }
+
+    private static double extractGenericAmount(String text) {
+        double amt = extractAmount(text, "(?:EGP|LE|L\\.E|ج\\.م)\\s*([\\d,.]+)");
+        if (amt <= 0) amt = extractAmount(text, "([\\d,.]+)\\s*(?:EGP|LE|L\\.E|ج\\.م)");
+        if (amt <= 0) amt = extractAmount(text, "amount of\\s*([\\d,.]+)");
+        return amt;
     }
 
     private static double extractAmount(String text, String regex) {

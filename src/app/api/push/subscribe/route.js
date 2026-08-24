@@ -4,13 +4,37 @@ import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY || '';
 
+async function resolveUserFromSessionOrToken(req) {
+  // 1. Check session cookie
+  const sessionUser = await getAuthenticatedUser(req);
+  if (sessionUser) return sessionUser;
+
+  // 2. Check token-based auth (for mobile APK / webhook clients)
+  const url = new URL(req.url);
+  const token = url.searchParams.get('key') || req.headers.get('x-user-key') || req.headers.get('x-webhook-token');
+  if (token) {
+    const { data: tokenData, error } = await supabase
+      .from('user_webhook_tokens')
+      .select('user_id')
+      .eq('token', token)
+      .maybeSingle();
+
+    if (!error && tokenData?.user_id) {
+      return { id: tokenData.user_id };
+    }
+  }
+
+  return null;
+}
+
 export async function GET() {
   return NextResponse.json({ publicKey: VAPID_PUBLIC_KEY });
 }
 
 export async function POST(req) {
-  const user = await getAuthenticatedUser(req);
+  const user = await resolveUserFromSessionOrToken(req);
   if (!user) return unauthorizedResponse();
+
   try {
     const { subscription } = await req.json();
     if (!subscription || !subscription.endpoint) {
@@ -39,8 +63,9 @@ export async function POST(req) {
 }
 
 export async function DELETE(req) {
-  const user = await getAuthenticatedUser(req);
+  const user = await resolveUserFromSessionOrToken(req);
   if (!user) return unauthorizedResponse();
+
   try {
     const { endpoint } = await req.json();
     if (endpoint) {

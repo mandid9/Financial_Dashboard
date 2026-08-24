@@ -229,5 +229,19 @@ public class MainActivity extends AppCompatActivity {
             SharedPreferences prefs = mContext.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
             return prefs.getString("webhook_token", "");
         }
+
+        @JavascriptInterface
+        public void syncCustomSmsRules(String jsonRules) {
+            if (jsonRules != null) {
+                SharedPreferences prefs = mContext.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+                prefs.edit().putString("custom_sms_rules", jsonRules).apply();
+            }
+        }
+
+        @JavascriptInterface
+        public String getCustomSmsRules() {
+            SharedPreferences prefs = mContext.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+            return prefs.getString("custom_sms_rules", "[]");
+        }
     }
 }

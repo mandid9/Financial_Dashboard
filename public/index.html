@@ -2526,10 +2526,49 @@ async function initPushNotifications() {
 
   try {
     const reg = await navigator.serviceWorker.register('/sw.js');
-    const sub = await reg.pushManager.getSubscription();
+    let sub = await reg.pushManager.getSubscription();
+
+    // Check server's current public key to auto-heal rotated VAPID keys
+    try {
+      const keyRes = await fetch('/api/push/subscribe');
+      const { publicKey } = await keyRes.json().catch(() => ({}));
+
+      if (sub && publicKey) {
+        const currentServerKey = urlBase64ToUint8Array(publicKey);
+        const subKey = sub.options && sub.options.applicationServerKey;
+        if (subKey) {
+          const subKeyArr = new Uint8Array(subKey);
+          const match = subKeyArr.length === currentServerKey.length &&
+                        subKeyArr.every((v, i) => v === currentServerKey[i]);
+          if (!match) {
+            console.log('[push] VAPID key mismatch/rotation detected. Auto-renewing subscription...');
+            await sub.unsubscribe();
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: currentServerKey
+            });
+            await fetch('/api/push/subscribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ subscription: sub })
+            });
+          }
+        }
+      }
+    } catch (keyErr) {
+      console.warn('VAPID key check warning:', keyErr);
+    }
+
     if (sub) {
       pushSubscription = sub;
       updatePushUI('subscribed');
+
+      // Ensure backend has current user associated with this subscription
+      fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub })
+      }).catch(() => {});
 
       // Silently evaluate rules in the background once per day
       const lastCheck = localStorage.getItem('last_push_eval');
