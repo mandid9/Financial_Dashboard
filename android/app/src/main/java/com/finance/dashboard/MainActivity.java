@@ -10,11 +10,12 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
-import android.view.MotionEvent;
+import android.util.Log;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -40,20 +41,21 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    public static final String DASHBOARD_URL = "https://finance-dashboard-next-two.vercel.app";
+    public static final String DASHBOARD_URL = "https://finance-dashboard-next-two.vercel.app/index.html";
     private static final int PERMISSION_REQUEST_CODE = 1001;
+    private static final String TAG = "FinanceMainActivity";
 
     private WebView webView;
     private SwipeRefreshLayout swipeRefresh;
     private ProgressBar progressBar;
-    private boolean isUnlocked = false;
+    private boolean isRetrying = false;
 
     @Override
     @SuppressLint("SetJavaScriptEnabled")
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // 1. Edge-to-Edge System Bar Configuration (Google Android Edge-to-Edge Skill)
+        // 1. Edge-to-Edge System Bar Configuration
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         if (insetsController != null) {
@@ -67,7 +69,7 @@ public class MainActivity extends AppCompatActivity {
         swipeRefresh = findViewById(R.id.swipe_refresh);
         progressBar = findViewById(R.id.progress_bar);
 
-        // 2. Dynamic Window Insets Handling (Status Bars, Navigation Bars, IME Keyboard)
+        // 2. Dynamic Window Insets Handling
         ViewCompat.setOnApplyWindowInsetsListener(swipeRefresh, (v, windowInsets) -> {
             Insets systemBars = windowInsets.getInsets(
                     WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
@@ -80,18 +82,6 @@ public class MainActivity extends AppCompatActivity {
         setupSwipeRefresh();
         checkAndRequestPermissions();
 
-        // 3. Biometric Security Check on Launch
-        SharedPreferences prefs = getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
-        boolean biometricEnabled = prefs.getBoolean("biometric_lock_enabled", false);
-
-        if (biometricEnabled && isBiometricSupported()) {
-            webView.setVisibility(View.INVISIBLE);
-            showBiometricPrompt();
-        } else {
-            isUnlocked = true;
-            webView.setVisibility(View.VISIBLE);
-        }
-
         if (savedInstanceState == null) {
             webView.loadUrl(DASHBOARD_URL);
         } else {
@@ -99,45 +89,59 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Check biometric lock on app open/resume if user enabled it
+        SharedPreferences prefs = getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+        if (prefs.getBoolean("biometric_lock_enabled", false) && isBiometricSupported()) {
+            showBiometricPrompt();
+        }
+    }
+
     public boolean isBiometricSupported() {
-        BiometricManager bm = BiometricManager.from(this);
-        int authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
-        return bm.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS;
+        try {
+            BiometricManager bm = BiometricManager.from(this);
+            int authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
+            return bm.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public void showBiometricPrompt() {
-        BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Unlock Financial Dashboard")
-                .setSubtitle("Confirm fingerprint or device lock to access your data")
-                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL)
-                .build();
+        try {
+            BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
+                    .setTitle("Unlock Financial Dashboard")
+                    .setSubtitle("Confirm fingerprint or device lock")
+                    .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                    .build();
 
-        BiometricPrompt prompt = new BiometricPrompt(this, ContextCompat.getMainExecutor(this), new BiometricPrompt.AuthenticationCallback() {
-            @Override
-            public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
-                super.onAuthenticationSucceeded(result);
-                isUnlocked = true;
-                runOnUiThread(() -> {
-                    if (webView != null) {
-                        webView.setVisibility(View.VISIBLE);
-                        webView.evaluateJavascript("if (window.onBiometricSuccess) window.onBiometricSuccess();", null);
-                    }
-                });
-            }
-
-            @Override
-            public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
-                super.onAuthenticationError(errorCode, errString);
-                if (!isUnlocked) {
-                    Toast.makeText(MainActivity.this, "Authentication required to view dashboard", Toast.LENGTH_SHORT).show();
+            BiometricPrompt prompt = new BiometricPrompt(this, ContextCompat.getMainExecutor(this), new BiometricPrompt.AuthenticationCallback() {
+                @Override
+                public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
+                    super.onAuthenticationSucceeded(result);
+                    runOnUiThread(() -> {
+                        if (webView != null) {
+                            webView.evaluateJavascript("if (window.onBiometricSuccess) window.onBiometricSuccess();", null);
+                        }
+                    });
                 }
-            }
-        });
 
-        prompt.authenticate(promptInfo);
+                @Override
+                public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
+                    super.onAuthenticationError(errorCode, errString);
+                    Log.d(TAG, "Biometric notice: " + errString);
+                }
+            });
+
+            prompt.authenticate(promptInfo);
+        } catch (Exception e) {
+            Log.w(TAG, "Biometric prompt error: " + e.getMessage());
+        }
     }
 
-    @SuppressLint("ClickableViewAccessibility")
+    @SuppressLint("SetJavaScriptEnabled")
     private void setupWebView() {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -153,50 +157,22 @@ public class MainActivity extends AppCompatActivity {
         settings.setLoadWithOverviewMode(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        // Enable third-party cookies and Google OAuth session persistence
+        // Cookies
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-        // Hardware acceleration for fluid 60fps/120fps scrolling
+        // Hardware acceleration
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        webView.setVisibility(View.VISIBLE);
 
-        // Expose secure JavaScript bridge interface
+        // Expose JavaScript bridge
         webView.addJavascriptInterface(new WebAppInterface(this), "AndroidApp");
-
-        // Touch Listener: Restrict pull-to-refresh to touch gestures starting strictly at the top header (< 250px)
-        webView.setOnTouchListener(new View.OnTouchListener() {
-            private float startY = 0f;
-
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                switch (event.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        startY = event.getY();
-                        swipeRefresh.setEnabled(startY <= 250 && webView.getScrollY() == 0);
-                        break;
-                    case MotionEvent.ACTION_MOVE:
-                        if (webView.getScrollY() > 0 || startY > 250) {
-                            swipeRefresh.setEnabled(false);
-                        }
-                        break;
-                    case MotionEvent.ACTION_UP:
-                    case MotionEvent.ACTION_CANCEL:
-                        swipeRefresh.setEnabled(true);
-                        break;
-                }
-                return false;
-            }
-        });
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                String url = request.getUrl().toString();
-                if (url.startsWith(DASHBOARD_URL) || url.contains("vercel.app") || url.contains("supabase.co") || url.contains("accounts.google.com")) {
-                    return false; // Load inside app WebView
-                }
-                return false;
+                return false; // Handle all navigation internally
             }
 
             @Override
@@ -208,6 +184,21 @@ public class MainActivity extends AppCompatActivity {
             public void onPageFinished(WebView view, String url) {
                 progressBar.setVisibility(View.GONE);
                 swipeRefresh.setRefreshing(false);
+                isRetrying = false;
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                super.onReceivedError(view, request, error);
+                if (request.isForMainFrame()) {
+                    progressBar.setVisibility(View.GONE);
+                    swipeRefresh.setRefreshing(false);
+                    // Automatically retry once if connection aborted transiently during deployment
+                    if (!isRetrying) {
+                        isRetrying = true;
+                        view.postDelayed(() -> view.loadUrl(DASHBOARD_URL), 1200);
+                    }
+                }
             }
         });
 
@@ -225,8 +216,12 @@ public class MainActivity extends AppCompatActivity {
     private void setupSwipeRefresh() {
         swipeRefresh.setColorSchemeResources(R.color.primary, R.color.accent);
         swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.surface);
-        swipeRefresh.setOnRefreshListener(() -> webView.reload());
+        swipeRefresh.setOnRefreshListener(() -> {
+            isRetrying = false;
+            webView.loadUrl(DASHBOARD_URL);
+        });
 
+        // Pull-to-refresh strictly when at the top of the WebView
         swipeRefresh.setOnChildScrollUpCallback((parent, child) -> {
             return webView.getScrollY() > 0 || webView.canScrollVertically(-1);
         });
