@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Financial Dashboard</string>
+    <string name="channel_name">Financial Alerts</string>
+    <string name="channel_desc">Instant alerts and confirmation for bank and payment transactions</string>
+</resources>
