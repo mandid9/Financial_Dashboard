@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
@@ -49,6 +50,7 @@ public class MainActivity extends AppCompatActivity {
     private SwipeRefreshLayout swipeRefresh;
     private ProgressBar progressBar;
     private boolean isRetrying = false;
+    private float touchStartY = 0f;
 
     @Override
     @SuppressLint("SetJavaScriptEnabled")
@@ -216,6 +218,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private void setupSwipeRefresh() {
         swipeRefresh.setColorSchemeResources(R.color.primary, R.color.accent);
         swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.surface);
@@ -224,9 +227,21 @@ public class MainActivity extends AppCompatActivity {
             webView.loadUrl(DASHBOARD_URL);
         });
 
-        // Pull-to-refresh strictly when at the top of the WebView
+        // 1. Capture touch start Y position to prevent pull-to-refresh when dragging lower/middle parts or popups
+        webView.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                touchStartY = event.getY();
+            }
+            return false;
+        });
+
+        // 2. Strictly allow pull-to-refresh ONLY when:
+        //    - WebView scroll position is at the very top (scrollY == 0)
+        //    - AND touch started within the top header area (Y <= 220px)
         swipeRefresh.setOnChildScrollUpCallback((parent, child) -> {
-            return webView.getScrollY() > 0 || webView.canScrollVertically(-1);
+            boolean isScrolledDown = webView.getScrollY() > 0 || webView.canScrollVertically(-1);
+            boolean isBelowTopHeader = touchStartY > 220f;
+            return isScrolledDown || isBelowTopHeader;
         });
     }
 
@@ -376,6 +391,15 @@ public class MainActivity extends AppCompatActivity {
             TransactionBackupStore.syncPendingTransactions(mActivity);
             mActivity.runOnUiThread(() -> {
                 Toast.makeText(mActivity, "🔄 Syncing offline transactions...", Toast.LENGTH_SHORT).show();
+            });
+        }
+
+        @JavascriptInterface
+        public void setSwipeRefreshEnabled(boolean enabled) {
+            mActivity.runOnUiThread(() -> {
+                if (mActivity.swipeRefresh != null) {
+                    mActivity.swipeRefresh.setEnabled(enabled);
+                }
             });
         }
     }

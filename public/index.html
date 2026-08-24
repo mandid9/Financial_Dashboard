@@ -249,6 +249,7 @@
       justify-content: center;
       opacity: 0;
       pointer-events: none;
+      overscroll-behavior: contain;
       transition: opacity var(--duration-modal) var(--ease-out);
     }
     .modal-backdrop.open { opacity: 1; pointer-events: auto; }
@@ -275,6 +276,8 @@
       transition: transform var(--duration-modal) var(--ease-drawer);
       max-height: 90vh;
       overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
     }
     .modal-backdrop.open .modal { transform: translateY(0); }
     .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
@@ -2364,6 +2367,9 @@ function openModal(id) {
   activeModalTrigger = document.activeElement;
   modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
+  if (window.AndroidApp && typeof window.AndroidApp.setSwipeRefreshEnabled === 'function') {
+    window.AndroidApp.setSwipeRefreshEnabled(false);
+  }
   const focusable = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
   if (focusable) setTimeout(() => focusable.focus(), 0);
 }
@@ -2377,6 +2383,11 @@ function closeModalForce(id) {
   if (!modal) return;
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
+  if (window.AndroidApp && typeof window.AndroidApp.setSwipeRefreshEnabled === 'function') {
+    if (!document.querySelector('.modal-backdrop.open')) {
+      window.AndroidApp.setSwipeRefreshEnabled(true);
+    }
+  }
   if (activeModalId === id) {
     activeModalId = null;
     if (activeModalTrigger && typeof activeModalTrigger.focus === 'function') activeModalTrigger.focus();
