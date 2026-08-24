@@ -1,5 +1,5 @@
 // Service Worker: Push Notifications + Stale-While-Revalidate Static Asset Caching
-const CACHE_NAME = 'expenses-pwa-v2';
+const CACHE_NAME = 'expenses-pwa-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: Stale-While-Revalidate for static assets, Network-only for /api/
+// Fetch: Network-first for pages (never serve stale HTML), SWR for other static assets
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -41,7 +41,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stale-While-Revalidate for static shell assets
+  // Navigations: always try network first so UI updates are picked up immediately
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-cache' })
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Stale-While-Revalidate for remaining static assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request).then((networkResponse) => {

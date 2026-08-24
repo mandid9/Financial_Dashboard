@@ -20,7 +20,7 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 export async function sendPushToAll(payload, targetUserId = null) {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
     console.log('Push notifications skipped: VAPID keys not configured in environment.');
-    return { success: true, count: 0 };
+    return { success: true, count: 0, total: 0, vapidMissing: true };
   }
 
   try {
@@ -31,11 +31,20 @@ export async function sendPushToAll(payload, targetUserId = null) {
 
     const { data: dbSubs, error } = await query;
     if (error || !dbSubs || dbSubs.length === 0) {
-      return { success: true, count: 0 };
+      let debugRows = [];
+      if (!error && targetUserId) {
+        const { data: anySubs } = await supabase
+          .from('push_subscriptions')
+          .select('user_id, created_at')
+          .limit(5);
+        debugRows = (anySubs || []).map(s => ({ owned: s.user_id != null, at: s.created_at }));
+      }
+      return { success: true, count: 0, total: 0, debugRows };
     }
 
     const payloadStr = JSON.stringify(payload);
     let successCount = 0;
+    const errors = [];
 
     for (const sub of dbSubs) {
       try {
@@ -43,13 +52,23 @@ export async function sendPushToAll(payload, targetUserId = null) {
         successCount++;
       } catch (err) {
         console.error('Failed to send push to device:', sub.endpoint, err.message);
-        if (err.statusCode === 410 || err.statusCode === 404) {
+        const rawBody = typeof err.body === 'string' ? err.body : (err.body ? JSON.stringify(err.body) : '');
+        errors.push({
+          endpoint: String(sub.endpoint).slice(-16),
+          statusCode: err.statusCode || null,
+          message: err.message,
+          body: String(rawBody || '').slice(0, 300)
+        });
+        const permanent = err.statusCode === 404 ||
+          err.statusCode === 410 ||
+          (err.statusCode === 403 && /invalid jwt|unauthorizedregistration|invalid.*subscription/i.test(String(rawBody)));
+        if (permanent) {
           await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
         }
       }
     }
 
-    return { success: true, count: successCount };
+    return { success: true, count: successCount, total: dbSubs.length, errors };
   } catch (err) {
     console.error('sendPush Error:', err);
     return { success: false, error: err.message };

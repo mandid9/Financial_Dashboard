@@ -2614,11 +2614,13 @@ async function togglePushNotifications() {
         applicationServerKey: urlBase64ToUint8Array(publicKey)
       });
 
-      await fetch('/api/push/subscribe', {
+      const saveRes = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscription: sub })
       });
+      const saved = await saveRes.json();
+      if (!saveRes.ok || saved.error) throw new Error(saved.error || 'Could not save subscription');
 
       pushSubscription = sub;
       updatePushUI('subscribed');
@@ -2643,7 +2645,25 @@ async function sendTestPush() {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    toast('Test alert sent! Check your notification bar.', 'success');
+    const count = Number(data.sentCount) || 0;
+    if (count > 0) {
+      toast(`🔔 Delivered to ${count} device${count > 1 ? 's' : ''}!`, 'success');
+    } else if (Array.isArray(data.errors) && data.errors.length) {
+      const e = data.errors[0];
+      const detail = String(e.body || e.message || '').slice(0, 90);
+      toast(`[v4] Push failed [${e.statusCode}] on ${data.errors.length}/${data.total}: ${detail}`, 'error');
+    } else if (data.vapidMissing) {
+      toast('[v4] Server push keys missing — contact admin.', 'error');
+    } else if (Array.isArray(data.debugRows)) {
+      if (!data.debugRows.length) {
+        toast('Notifications are on, but no device is registered yet.', 'error');
+      } else {
+        toast('Registered devices belong to a different account.', 'error');
+      }
+    } else {
+      console.warn('[push-test] unexpected response', res.status, data);
+      toast('Unexpected server response — see console.', 'error');
+    }
   } catch (e) {
     toast('Error sending test push: ' + e.message, 'error');
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
+import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
 
 function authorizeCron(req) {
   const cronSecret = process.env.CRON_SECRET;
@@ -50,22 +51,33 @@ export async function GET(req) {
 // Handles manual / test / custom POST requests
 export async function POST(req) {
   try {
-    const unauthorized = authorizeCron(req);
-    if (unauthorized) return unauthorized;
-
     const body = await req.json().catch(() => ({}));
     const { type, customPayload } = body;
 
+    // Test pushes come from the logged-in dashboard UI (no cron secret there)
     if (type === 'test') {
+      const user = await getAuthenticatedUser(req);
+      if (!user) return unauthorizedResponse();
       const testAlert = {
         title: '🔔 Push Notifications Active!',
         body: 'Your Expenses dashboard is connected to native push alerts.',
         icon: '/icon.svg',
         url: '/index.html'
       };
-      const res = await sendPushToAll(testAlert);
-      return NextResponse.json({ success: true, sentCount: res.count, notification: testAlert });
+      const res = await sendPushToAll(testAlert, user.id);
+      return NextResponse.json({
+        success: true,
+        sentCount: res.count,
+        total: res.total !== undefined ? res.total : null,
+        errors: res.errors || [],
+        debugRows: res.debugRows || null,
+        vapidMissing: !!res.vapidMissing,
+        notification: testAlert
+      });
     }
+
+    const unauthorized = authorizeCron(req);
+    if (unauthorized) return unauthorized;
 
     if (type === 'custom' && customPayload) {
       const res = await sendPushToAll(customPayload);

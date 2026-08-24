@@ -27,8 +27,8 @@ export async function POST(req) {
       }, { onConflict: 'endpoint' });
 
     if (error) {
-      console.warn('Supabase push_subscriptions table error:', error.message);
-      return NextResponse.json({ success: true, warning: error.message });
+      console.error('Supabase push_subscriptions table error:', error.message);
+      return NextResponse.json({ error: 'Subscription save failed: ' + error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
