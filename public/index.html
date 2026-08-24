@@ -1128,6 +1128,18 @@ async function handleOAuthHashCallback() {
   return false;
 }
 
+function updateUserAvatar() {
+  if (state.user && state.user.email) {
+    const initial = state.user.email.charAt(0).toUpperCase();
+    const topAvatarInitial = document.getElementById('user-avatar-initial');
+    const hubAvatarInitial = document.getElementById('hub-avatar-initial');
+    const hubEmail = document.getElementById('hub-user-email');
+    if (topAvatarInitial) topAvatarInitial.textContent = initial;
+    if (hubAvatarInitial) hubAvatarInitial.textContent = initial;
+    if (hubEmail) hubEmail.textContent = state.user.email;
+  }
+}
+
 async function checkAuth() {
   if (await handleOAuthHashCallback()) {
     return true;
@@ -1137,6 +1149,9 @@ async function checkAuth() {
     showLogin();
     return false;
   }
+  const data = await res.json().catch(() => ({}));
+  state.user = data.user || null;
+  updateUserAvatar();
   showApp();
   return true;
 }
@@ -1156,6 +1171,8 @@ async function login(event) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Unable to sign in');
+    state.user = data.user || null;
+    updateUserAvatar();
     showApp();
     await loadData();
     initPushNotifications();
@@ -3023,8 +3040,7 @@ function openUserHubModal() {
   // Render Custom Rules List
   renderCustomSmsRulesList();
 
-  modal.classList.add('active');
-  modal.setAttribute('aria-hidden', 'false');
+  openModal('modal-user-hub');
 }
 
 function testCustomSmsRule() {
