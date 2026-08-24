@@ -230,7 +230,7 @@ async function handleSalarySms(message, time, userId) {
     body: `Paycheck deposited into your account.`,
     icon: '/icon.svg',
     url: '/index.html'
-  }).catch(e => console.warn('Push error:', e));
+  }, userId).catch(e => console.warn('Push error:', e));
 
   return new NextResponse('Success: Salary logged', { status: 200 });
 }
@@ -274,7 +274,7 @@ async function handleInstapayReceived(message, time, userId) {
     body: `${source}`,
     icon: '/icon.svg',
     url: '/index.html'
-  }).catch(e => console.warn('Push error:', e));
+  }, userId).catch(e => console.warn('Push error:', e));
 
   return new NextResponse('Success: Instapay income logged', { status: 200 });
 }
@@ -347,9 +347,9 @@ async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, cate
     body: `${sourceOrMerchant} • Needs category. Tap to review.`,
     icon: '/icon.svg',
     url: '/index.html'
-  }).catch(e => console.warn('Push error:', e));
+  }, userId).catch(e => console.warn('Push error:', e));
 
-  await evaluateAndDispatchTriggers(false).catch(e => console.warn('Trigger error:', e));
+  await evaluateAndDispatchTriggers(false, userId).catch(e => console.warn('Trigger error:', e));
 
   return new NextResponse('Success: Expense logged', { status: 200 });
 }
@@ -397,7 +397,7 @@ async function handleReversal(message, time, userId) {
     body: `Transaction reversed and credited back.`,
     icon: '/icon.svg',
     url: '/index.html'
-  }).catch(e => console.warn('Push error:', e));
+  }, userId).catch(e => console.warn('Push error:', e));
 
   return new NextResponse('Success: Reversal logged', { status: 200 });
 }

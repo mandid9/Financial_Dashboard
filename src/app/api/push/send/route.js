@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
 import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
 
 function authorizeCron(req) {
@@ -15,6 +16,21 @@ function authorizeCron(req) {
   return null;
 }
 
+async function evaluateForAllUsers(forceDaily) {
+  const { data: tokens, error } = await supabase.from('user_webhook_tokens').select('user_id');
+  const userIds = error ? [] : [...new Set((tokens || []).map(t => t.user_id).filter(Boolean))];
+
+  if (userIds.length === 0) {
+    return await evaluateAndDispatchTriggers(forceDaily);
+  }
+
+  const results = [];
+  for (const userId of userIds) {
+    results.push(await evaluateAndDispatchTriggers(forceDaily, userId));
+  }
+  return { evaluatedUsers: userIds.length, results };
+}
+
 // Handles Vercel Cron and automated GET requests
 export async function GET(req) {
   try {
@@ -23,7 +39,7 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const forceDaily = searchParams.get('daily') === 'true' || searchParams.get('cron') === 'true';
-    const result = await evaluateAndDispatchTriggers(forceDaily);
+    const result = await evaluateForAllUsers(forceDaily);
     return NextResponse.json({ success: true, message: 'Automated push check completed', result });
   } catch (err) {
     console.error('GET /api/push/send Error:', err);
@@ -56,8 +72,8 @@ export async function POST(req) {
       return NextResponse.json({ success: true, sentCount: res.count, notification: customPayload });
     }
 
-    // Default: evaluate all 4 rules
-    const result = await evaluateAndDispatchTriggers(type === 'daily_status');
+    // Default: evaluate all rules per user
+    const result = await evaluateForAllUsers(type === 'daily_status');
     return NextResponse.json({ success: true, result });
   } catch (err) {
     console.error('POST /api/push/send Error:', err);
