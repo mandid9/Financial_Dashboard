@@ -18,6 +18,23 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
+
+    // 1. Google OAuth Token Exchange
+    if (body.access_token) {
+      const { data, error } = await supabase.auth.getUser(body.access_token);
+      if (error || !data?.user) {
+        return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 });
+      }
+      const response = NextResponse.json({ user: { id: data.user.id, email: data.user.email } });
+      const maxAge = Number(body.expires_in) || 3600;
+      response.cookies.set('finance_access_token', body.access_token, { ...cookieOptions, maxAge });
+      if (body.refresh_token) {
+        response.cookies.set('finance_refresh_token', body.refresh_token, { ...cookieOptions, maxAge: 60 * 60 * 24 * 30 });
+      }
+      return response;
+    }
+
+    // 2. Email & Password Authentication
     const email = typeof body.email === 'string' ? body.email.trim() : '';
     const password = typeof body.password === 'string' ? body.password : '';
     if (!email || !password) return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });

@@ -499,6 +499,50 @@
     .auth-card p { color:var(--text-secondary); margin-bottom:20px; }
     .auth-error { min-height:20px; color:var(--danger); font-size:13px; margin-bottom:10px; }
     .auth-card button { width:100%; }
+    .btn-google {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: #ffffff;
+      color: #1f2937;
+      font-weight: 600;
+      font-size: 14px;
+      padding: 12px 16px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      transition: transform var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .btn-google:hover {
+        background: #f9fafb;
+        transform: translateY(-1px);
+      }
+    }
+    .btn-google:active {
+      transform: scale(0.96);
+    }
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 18px 0;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .auth-divider::before, .auth-divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid var(--surface-border);
+    }
+    .auth-divider span {
+      padding: 0 12px;
+    }
     .logout-btn { background:transparent; border:none; color:var(--text-muted); padding:4px 0; font-size:11px; }
   </style>
 </head>
@@ -506,16 +550,26 @@
 
 
 <div id="auth-gate" class="auth-gate">
-  <form id="login-form" class="auth-card">
+  <div class="auth-card">
     <h1>Expenses</h1>
     <p>Sign in to access your private finance dashboard.</p>
-    <label for="login-email">Email</label>
-    <input id="login-email" type="email" autocomplete="username" required>
-    <label for="login-password">Password</label>
-    <input id="login-password" type="password" autocomplete="current-password" required>
-    <div id="auth-error" class="auth-error" role="alert"></div>
-    <button id="login-submit" class="primary" type="submit">Sign in</button>
-  </form>
+    
+    <button type="button" class="btn-google" id="btn-google-login" onclick="loginWithGoogle()">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
+      Continue with Google
+    </button>
+    
+    <div class="auth-divider"><span>OR</span></div>
+    
+    <form id="login-form">
+      <label for="login-email">Email</label>
+      <input id="login-email" type="email" autocomplete="username" required>
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required>
+      <div id="auth-error" class="auth-error" role="alert"></div>
+      <button id="login-submit" class="primary" type="submit">Sign in with Email</button>
+    </form>
+  </div>
 </div>
 
 <div class="app-container" id="app-shell" style="display:none">
@@ -887,7 +941,49 @@ function showApp() {
   document.getElementById('app-shell').style.display = 'block';
 }
 
+function loginWithGoogle() {
+  const btn = document.getElementById('btn-google-login');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = 'Connecting to Google...';
+  }
+  window.location.href = '/api/auth/google';
+}
+
+async function handleOAuthHashCallback() {
+  const hash = window.location.hash;
+  if (hash && hash.includes('access_token=')) {
+    const params = new URLSearchParams(hash.substring(1));
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const expiresIn = parseInt(params.get('expires_in') || '3600', 10);
+    
+    if (accessToken) {
+      history.replaceState(null, '', window.location.pathname);
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ access_token: accessToken, refresh_token: refreshToken, expires_in: expiresIn })
+        });
+        if (res.ok) {
+          showApp();
+          await loadData();
+          initPushNotifications();
+          return true;
+        }
+      } catch (e) {
+        console.error('OAuth exchange error:', e);
+      }
+    }
+  }
+  return false;
+}
+
 async function checkAuth() {
+  if (await handleOAuthHashCallback()) {
+    return true;
+  }
   const res = await fetch('/api/auth', { cache: 'no-store' });
   if (!res.ok) {
     showLogin();
@@ -919,7 +1015,7 @@ async function login(event) {
     errorEl.textContent = error.message;
   } finally {
     submit.disabled = false;
-    submit.textContent = 'Sign in';
+    submit.textContent = 'Sign in with Email';
   }
 }
 
