@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { evaluateAndDispatchTriggers } from '@/lib/push';
 import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
 
-async function getCategoryIdByName(rawName, userId = null) {
+async function getCategoryIdByName(rawName, userId, isOwner = false) {
   if (!rawName) return null;
   const clean = String(rawName)
     .replace(/&amp;/g, '&')
@@ -18,13 +18,21 @@ async function getCategoryIdByName(rawName, userId = null) {
 
   // 1. Try exact match
   let exactQuery = supabase.from('categories').select('id').eq('name', clean);
-  if (userId) exactQuery = exactQuery.or(`user_id.eq.${userId},user_id.is.null`);
+  if (isOwner) {
+    exactQuery = exactQuery.or(`user_id.eq.${userId},user_id.is.null`);
+  } else {
+    exactQuery = exactQuery.eq('user_id', userId);
+  }
   const { data: catExact } = await exactQuery.maybeSingle();
   if (catExact) return catExact.id;
 
   // 2. Try case-insensitive match
   let ilikeQuery = supabase.from('categories').select('id').ilike('name', clean);
-  if (userId) ilikeQuery = ilikeQuery.or(`user_id.eq.${userId},user_id.is.null`);
+  if (isOwner) {
+    ilikeQuery = ilikeQuery.or(`user_id.eq.${userId},user_id.is.null`);
+  } else {
+    ilikeQuery = ilikeQuery.eq('user_id', userId);
+  }
   const { data: catIlike } = await ilikeQuery.maybeSingle();
   if (catIlike) return catIlike.id;
 
@@ -46,6 +54,7 @@ export async function POST(req) {
   const user = await getAuthenticatedUser(req);
   if (!user) return unauthorizedResponse();
   const userId = user.id;
+  const isOwner = user.email === 'kr.wn20@gmail.com';
 
   try {
     const body = await req.json().catch(() => null);
@@ -61,15 +70,21 @@ export async function POST(req) {
     switch (action) {
       case 'saveCategory': {
         const [id, catName, reduceDebtAmount] = args;
-        const catId = await getCategoryIdByName(catName, userId);
+        const catId = await getCategoryIdByName(catName, userId, isOwner);
 
         if (typeof reduceDebtAmount === 'number' && reduceDebtAmount > 0) {
-          const { data: debtCat } = await supabase
+          let debtQuery = supabase
             .from('categories')
             .select('id, planned_amount')
-            .ilike('name', 'debt')
-            .or(`user_id.eq.${userId},user_id.is.null`)
-            .maybeSingle();
+            .ilike('name', 'debt');
+
+          if (isOwner) {
+            debtQuery = debtQuery.or(`user_id.eq.${userId},user_id.is.null`);
+          } else {
+            debtQuery = debtQuery.eq('user_id', userId);
+          }
+
+          const { data: debtCat } = await debtQuery.maybeSingle();
 
           if (debtCat) {
             const currentPlan = Number(debtCat.planned_amount) || 0;
@@ -81,12 +96,18 @@ export async function POST(req) {
           }
         }
 
-        const { error } = await supabase
+        let updateQuery = supabase
           .from('transactions')
           .update({ category_id: catId })
-          .eq('id', id)
-          .or(`user_id.eq.${userId},user_id.is.null`);
+          .eq('id', id);
 
+        if (isOwner) {
+          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          updateQuery = updateQuery.eq('user_id', userId);
+        }
+
+        const { error } = await updateQuery;
         if (error) throw error;
         evaluateAndDispatchTriggers(false, userId).catch(err => console.warn('Push alert error:', err));
         return NextResponse.json({ success: true });
@@ -96,12 +117,18 @@ export async function POST(req) {
       case 'saveIncomeNote': {
         const [id, note] = args;
         const cleanNote = sanitizeStr(note, 500);
-        const { error } = await supabase
+        let updateQuery = supabase
           .from('transactions')
           .update({ note: cleanNote })
-          .eq('id', id)
-          .or(`user_id.eq.${userId},user_id.is.null`);
+          .eq('id', id);
 
+        if (isOwner) {
+          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          updateQuery = updateQuery.eq('user_id', userId);
+        }
+
+        const { error } = await updateQuery;
         if (error) throw error;
         return NextResponse.json({ success: true });
       }
@@ -109,36 +136,54 @@ export async function POST(req) {
       case 'saveIncomeSource': {
         const [id, src] = args;
         const cleanSrc = sanitizeStr(src, 200);
-        const { error } = await supabase
+        let updateQuery = supabase
           .from('transactions')
           .update({ source_or_merchant: cleanSrc })
-          .eq('id', id)
-          .or(`user_id.eq.${userId},user_id.is.null`);
+          .eq('id', id);
 
+        if (isOwner) {
+          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          updateQuery = updateQuery.eq('user_id', userId);
+        }
+
+        const { error } = await updateQuery;
         if (error) throw error;
         return NextResponse.json({ success: true });
       }
 
       case 'undoTransaction': {
         const [id] = args;
-        const { error } = await supabase
+        let delQuery = supabase
           .from('transactions')
           .delete()
-          .eq('id', id)
-          .or(`user_id.eq.${userId},user_id.is.null`);
+          .eq('id', id);
 
+        if (isOwner) {
+          delQuery = delQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          delQuery = delQuery.eq('user_id', userId);
+        }
+
+        const { error } = await delQuery;
         if (error) throw error;
         return NextResponse.json({ success: true });
       }
 
       case 'toggleCarryForward': {
         const [id, isCarried] = args;
-        const { error } = await supabase
+        let updateQuery = supabase
           .from('transactions')
           .update({ is_carried_forward: !!isCarried })
-          .eq('id', id)
-          .or(`user_id.eq.${userId},user_id.is.null`);
+          .eq('id', id);
 
+        if (isOwner) {
+          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          updateQuery = updateQuery.eq('user_id', userId);
+        }
+
+        const { error } = await updateQuery;
         if (error) throw error;
         return NextResponse.json({ success: true });
       }
@@ -149,7 +194,7 @@ export async function POST(req) {
         if (amount === null || amount <= 0) {
           return NextResponse.json({ error: 'Valid positive amount is required' }, { status: 400 });
         }
-        const catId = await getCategoryIdByName(catName, userId);
+        const catId = await getCategoryIdByName(catName, userId, isOwner);
         const { error } = await supabase.from('transactions').insert([{
           user_id: userId,
           kind: 'outgoing',
@@ -186,26 +231,37 @@ export async function POST(req) {
 
       case 'splitTransaction': {
         const [id, parts] = args;
-        const { data: orig, error: fetchErr } = await supabase
+        let selectQuery = supabase
           .from('transactions')
           .select('*')
-          .eq('id', id)
-          .or(`user_id.eq.${userId},user_id.is.null`)
-          .single();
+          .eq('id', id);
 
+        if (isOwner) {
+          selectQuery = selectQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          selectQuery = selectQuery.eq('user_id', userId);
+        }
+
+        const { data: orig, error: fetchErr } = await selectQuery.single();
         if (fetchErr) throw fetchErr;
         if (!orig) throw new Error('Transaction not found');
 
-        const { error: delErr } = await supabase
+        let delQuery = supabase
           .from('transactions')
           .delete()
-          .eq('id', id)
-          .or(`user_id.eq.${userId},user_id.is.null`);
+          .eq('id', id);
 
+        if (isOwner) {
+          delQuery = delQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          delQuery = delQuery.eq('user_id', userId);
+        }
+
+        const { error: delErr } = await delQuery;
         if (delErr) throw delErr;
 
         for (const p of parts) {
-          const catId = await getCategoryIdByName(p.category, userId);
+          const catId = await getCategoryIdByName(p.category, userId, isOwner);
           const { error: insErr } = await supabase.from('transactions').insert([{
             user_id: userId,
             kind: orig.kind,
@@ -233,36 +289,54 @@ export async function POST(req) {
 
       case 'updateCategoryBudget': {
         const [name, planned] = args;
-        const { error } = await supabase
+        let updateQuery = supabase
           .from('categories')
           .update({ planned_amount: planned })
-          .eq('name', name)
-          .or(`user_id.eq.${userId},user_id.is.null`);
+          .eq('name', name);
 
+        if (isOwner) {
+          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          updateQuery = updateQuery.eq('user_id', userId);
+        }
+
+        const { error } = await updateQuery;
         if (error) throw error;
         return NextResponse.json({ success: true });
       }
 
       case 'renameExpenseCategory': {
         const [oldName, newName] = args;
-        const { error } = await supabase
+        let updateQuery = supabase
           .from('categories')
           .update({ name: newName })
-          .eq('name', oldName)
-          .or(`user_id.eq.${userId},user_id.is.null`);
+          .eq('name', oldName);
 
+        if (isOwner) {
+          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          updateQuery = updateQuery.eq('user_id', userId);
+        }
+
+        const { error } = await updateQuery;
         if (error) throw error;
         return NextResponse.json({ success: true });
       }
 
       case 'deleteExpenseCategory': {
         const [name] = args;
-        const { error } = await supabase
+        let delQuery = supabase
           .from('categories')
           .delete()
-          .eq('name', name)
-          .or(`user_id.eq.${userId},user_id.is.null`);
+          .eq('name', name);
 
+        if (isOwner) {
+          delQuery = delQuery.or(`user_id.eq.${userId},user_id.is.null`);
+        } else {
+          delQuery = delQuery.eq('user_id', userId);
+        }
+
+        const { error } = await delQuery;
         if (error) throw error;
         return NextResponse.json({ success: true });
       }
@@ -271,22 +345,34 @@ export async function POST(req) {
         const [carryItems, nextDebtAmount] = args;
         if (Array.isArray(carryItems)) {
           for (const item of carryItems) {
-            const { error } = await supabase
+            let updateQuery = supabase
               .from('transactions')
               .update({ is_carried_forward: true })
-              .eq('id', item.row)
-              .or(`user_id.eq.${userId},user_id.is.null`);
+              .eq('id', item.row);
 
+            if (isOwner) {
+              updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
+            } else {
+              updateQuery = updateQuery.eq('user_id', userId);
+            }
+
+            const { error } = await updateQuery;
             if (error) throw error;
           }
         }
         if (typeof nextDebtAmount === 'number') {
-          const { data: debtCat } = await supabase
+          let debtQuery = supabase
             .from('categories')
             .select('id, name')
-            .ilike('name', 'debt')
-            .or(`user_id.eq.${userId},user_id.is.null`)
-            .maybeSingle();
+            .ilike('name', 'debt');
+
+          if (isOwner) {
+            debtQuery = debtQuery.or(`user_id.eq.${userId},user_id.is.null`);
+          } else {
+            debtQuery = debtQuery.eq('user_id', userId);
+          }
+
+          const { data: debtCat } = await debtQuery.maybeSingle();
 
           if (debtCat) {
             await supabase
@@ -301,12 +387,18 @@ export async function POST(req) {
       case 'reorderCategories': {
         const [orderedIds] = args;
         for (let i = 0; i < orderedIds.length; i++) {
-          const { error } = await supabase
+          let updateQuery = supabase
             .from('categories')
             .update({ sort_order: i })
-            .eq('id', orderedIds[i])
-            .or(`user_id.eq.${userId},user_id.is.null`);
+            .eq('id', orderedIds[i]);
 
+          if (isOwner) {
+            updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
+          } else {
+            updateQuery = updateQuery.eq('user_id', userId);
+          }
+
+          const { error } = await updateQuery;
           if (error) throw error;
         }
         return NextResponse.json({ success: true });

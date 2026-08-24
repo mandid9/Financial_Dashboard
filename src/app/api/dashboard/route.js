@@ -58,20 +58,67 @@ export async function GET(req) {
     const isNext = cycleOffset > 0;
     const isPast = cycleOffset < 0;
 
-    // 2. Fetch Categories
-    const { data: categories, error: catError } = await supabase
+    const isOwner = user.email === 'kr.wn20@gmail.com';
+
+    // If primary owner, ensure legacy unassigned records are locked to owner's user_id
+    if (isOwner) {
+      await Promise.all([
+        supabase.from('categories').update({ user_id: user.id }).is('user_id', null),
+        supabase.from('transactions').update({ user_id: user.id }).is('user_id', null),
+        supabase.from('push_subscriptions').update({ user_id: user.id }).is('user_id', null)
+      ]).catch(e => console.warn('Auto-backfill notice:', e.message));
+    }
+
+    // 2. Fetch Categories (Strictly scoped to user_id)
+    let catQuery = supabase
       .from('categories')
       .select('id, name, planned_amount, sort_order')
-      .or(`user_id.eq.${user.id},user_id.is.null`)
       .order('sort_order', { ascending: true });
+
+    if (isOwner) {
+      catQuery = catQuery.or(`user_id.eq.${user.id},user_id.is.null`);
+    } else {
+      catQuery = catQuery.eq('user_id', user.id);
+    }
+
+    let { data: categories, error: catError } = await catQuery;
     if (catError) throw catError;
 
-    // 3. Fetch Transactions
-    const { data: allTransactions, error: txError } = await supabase
+    // Auto-provision initial categories for new accounts
+    if (!categories || categories.length === 0) {
+      const defaultCategories = [
+        { user_id: user.id, name: 'Food & Dining', planned_amount: 0, sort_order: 1 },
+        { user_id: user.id, name: 'Groceries & Supermarket', planned_amount: 0, sort_order: 2 },
+        { user_id: user.id, name: 'Transportation & Fuel', planned_amount: 0, sort_order: 3 },
+        { user_id: user.id, name: 'Bills & Utilities', planned_amount: 0, sort_order: 4 },
+        { user_id: user.id, name: 'Housing & Rent', planned_amount: 0, sort_order: 5 },
+        { user_id: user.id, name: 'Shopping & Personal', planned_amount: 0, sort_order: 6 },
+        { user_id: user.id, name: 'Health & Medical', planned_amount: 0, sort_order: 7 },
+        { user_id: user.id, name: 'Debt & Credit Card', planned_amount: 0, sort_order: 8 },
+        { user_id: user.id, name: 'Savings & Investments', planned_amount: 0, sort_order: 9 },
+        { user_id: user.id, name: 'Uncategorized', planned_amount: 0, sort_order: 10 }
+      ];
+      const { data: seeded, error: seedErr } = await supabase.from('categories').insert(defaultCategories).select();
+      if (!seedErr && seeded) {
+        categories = seeded;
+      } else {
+        categories = defaultCategories.map((c, i) => ({ id: `temp-${i}`, ...c }));
+      }
+    }
+
+    // 3. Fetch Transactions (Strictly scoped to user_id)
+    let txQuery = supabase
       .from('transactions')
       .select('id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id, categories(name)')
-      .or(`user_id.eq.${user.id},user_id.is.null`)
       .order('transaction_date', { ascending: false });
+
+    if (isOwner) {
+      txQuery = txQuery.or(`user_id.eq.${user.id},user_id.is.null`);
+    } else {
+      txQuery = txQuery.eq('user_id', user.id);
+    }
+
+    const { data: allTransactions, error: txError } = await txQuery;
     if (txError) throw txError;
 
     // 4. Calculate Current Active Cycle Debt & Credit Card Rollover
