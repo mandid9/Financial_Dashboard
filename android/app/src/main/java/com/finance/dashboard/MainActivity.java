@@ -10,8 +10,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -53,7 +54,7 @@ public class MainActivity extends AppCompatActivity {
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         if (insetsController != null) {
-            insetsController.setAppearanceLightStatusBars(false); // Dark status bar content for dark theme
+            insetsController.setAppearanceLightStatusBars(false);
             insetsController.setAppearanceLightNavigationBars(false);
         }
 
@@ -83,6 +84,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private void setupWebView() {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -98,11 +100,42 @@ public class MainActivity extends AppCompatActivity {
         settings.setLoadWithOverviewMode(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
+        // Enable third-party cookies and Google OAuth session persistence
+        CookieManager cookieManager = CookieManager.getInstance();
+        cookieManager.setAcceptCookie(true);
+        cookieManager.setAcceptThirdPartyCookies(webView, true);
+
         // Hardware acceleration for fluid 60fps/120fps scrolling
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
         // Expose secure JavaScript bridge interface
         webView.addJavascriptInterface(new WebAppInterface(this), "AndroidApp");
+
+        // Touch Listener: Restrict pull-to-refresh to touch gestures starting strictly at the top header (< 250px)
+        webView.setOnTouchListener(new View.OnTouchListener() {
+            private float startY = 0f;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        startY = event.getY();
+                        // Only enable SwipeRefresh if touch started within the top 250px and at top of page
+                        swipeRefresh.setEnabled(startY <= 250 && webView.getScrollY() == 0);
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (webView.getScrollY() > 0 || startY > 250) {
+                            swipeRefresh.setEnabled(false);
+                        }
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        swipeRefresh.setEnabled(true);
+                        break;
+                }
+                return false;
+            }
+        });
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -141,6 +174,11 @@ public class MainActivity extends AppCompatActivity {
         swipeRefresh.setColorSchemeResources(R.color.primary, R.color.accent);
         swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.surface);
         swipeRefresh.setOnRefreshListener(() -> webView.reload());
+
+        // Child scroll check: only allow refresh if webView is at the absolute top
+        swipeRefresh.setOnChildScrollUpCallback((parent, child) -> {
+            return webView.getScrollY() > 0 || webView.canScrollVertically(-1);
+        });
     }
 
     private void checkAndRequestPermissions() {
