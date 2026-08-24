@@ -533,15 +533,34 @@
       color: var(--text-muted);
       font-size: 11px;
       font-weight: 700;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.8px;
     }
     .auth-divider::before, .auth-divider::after {
       content: '';
       flex: 1;
       border-bottom: 1px solid var(--surface-border);
     }
-    .auth-divider span {
-      padding: 0 12px;
+    .auth-divider::before { margin-right: 12px; }
+    .auth-divider::after { margin-left: 12px; }
+
+    .avatar-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), #4f46e5);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(138, 43, 226, 0.35);
+      transition: transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+    }
+    .avatar-btn:active {
+      transform: scale(0.92);
     }
     .logout-btn { background:transparent; border:none; color:var(--text-muted); padding:4px 0; font-size:11px; }
   </style>
@@ -577,7 +596,12 @@
   <div class="header-bar">
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <h1>Expenses</h1>
-      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px"><small id="last-updated">Updating...</small><button class="logout-btn" onclick="logout()">Sign out</button></div>
+      <div style="display:flex; align-items:center; gap:10px">
+        <small id="last-updated" style="font-size:11px; color:var(--text-muted)">Updating...</small>
+        <button id="user-profile-avatar-btn" class="avatar-btn" onclick="openUserHubModal()" title="Account & User Hub">
+          <span id="user-avatar-initial">K</span>
+        </button>
+      </div>
     </div>
     <!-- Cycle Navigator -->
     <div class="cycle-nav-bar">
@@ -755,6 +779,100 @@
 <div id="toast-container" class="toast-container"></div>
 
 <!-- MODALS -->
+
+<!-- USER PROFILE & MANAGEMENT HUB MODAL -->
+<div id="modal-user-hub" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true" onclick="closeModal(event, 'modal-user-hub')">
+  <div class="modal" style="max-height:86vh; overflow-y:auto; padding:20px">
+    <div class="modal-header" style="border-bottom:1px solid var(--surface-border); padding-bottom:12px">
+      <div style="display:flex; align-items:center; gap:12px">
+        <div class="avatar-btn" style="width:42px; height:42px; font-size:16px;">
+          <span id="hub-avatar-initial">K</span>
+        </div>
+        <div>
+          <h2 style="margin:0; font-size:16px;">User Hub & Security</h2>
+          <small id="hub-user-email" style="color:var(--text-muted)">kr.wn20@gmail.com</small>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeModalForce('modal-user-hub')">&times;</button>
+    </div>
+
+    <!-- 1. SECURITY & APP LOCK -->
+    <div style="margin-top:16px; margin-bottom:16px;">
+      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">🔐 Biometric Security & App Lock</h3>
+      <div class="card" style="padding:14px; background:rgba(30,41,59,0.5)">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+          <strong>Fingerprint / Screen Lock</strong>
+          <span id="hub-biometric-badge" class="badge">Disabled</span>
+        </div>
+        <small style="color:var(--text-muted); display:block; margin-bottom:10px; font-size:12px; line-height:1.4">Require fingerprint or device PIN when opening Financial Dashboard.</small>
+        <button id="hub-btn-biometric" class="primary" style="width:100%" onclick="toggleBiometricLock()">Enable Fingerprint Lock</button>
+      </div>
+    </div>
+
+    <!-- 2. SUPPORTED BANKS & CUSTOM SMS RULES -->
+    <div style="margin-bottom:16px;">
+      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">🏦 Egyptian Banks & SMS Parser</h3>
+      
+      <!-- Supported Banks Catalog -->
+      <div class="card" style="padding:14px; background:rgba(30,41,59,0.5); margin-bottom:12px;">
+        <strong style="font-size:12px; display:block; margin-bottom:8px">Built-in Egyptian Banks & Wallets:</strong>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <span class="badge blue">📱 InstaPay (Sent & Received)</span>
+          <span class="badge purple">💳 CIB (Debit & Credit)</span>
+          <span class="badge green">💳 NBE (National Bank)</span>
+          <span class="badge yellow">💳 Banque Misr</span>
+          <span class="badge">💳 QNB AlAhli</span>
+          <span class="badge red">📱 Vodafone Cash</span>
+          <span class="badge">💰 Salary Deposit</span>
+        </div>
+      </div>
+
+      <!-- Live SMS Rule Tester & Custom Rule Creator -->
+      <div class="card" style="padding:14px; background:linear-gradient(135deg, rgba(138,43,226,0.08), rgba(15,28,63,0.5)); border:1px solid rgba(138,43,226,0.25)">
+        <strong style="font-size:13px; display:block; margin-bottom:4px">🧪 Visual SMS Rule Builder</strong>
+        <small style="color:var(--text-muted); display:block; margin-bottom:10px; font-size:12px">Paste any bank SMS below to test regex extraction and save a custom tag rule.</small>
+        
+        <textarea id="hub-sms-input" rows="3" placeholder="Paste sample bank SMS here... e.g. Paid EGP 350.00 at Gourmet on card 1234" style="width:100%; font-size:12px; margin-bottom:8px; border-radius:8px; padding:8px; background:rgba(15,23,42,0.8); color:#fff; border:1px solid var(--surface-border)" oninput="testCustomSmsRule()"></textarea>
+        
+        <!-- Live Detection Output -->
+        <div id="hub-sms-preview" style="background:rgba(0,0,0,0.3); padding:8px 10px; border-radius:8px; font-size:12px; margin-bottom:10px; border:1px dashed var(--surface-border)">
+          <div style="color:var(--text-muted); font-size:11px">Live Detection Preview:</div>
+          <div id="hub-preview-result" style="margin-top:4px; font-weight:600; color:#c084fc">Paste an SMS above to preview...</div>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-bottom:8px">
+          <div style="flex:1">
+            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px">Rule Name / Keyword</label>
+            <input id="hub-rule-keyword" type="text" placeholder="e.g. Gourmet" style="width:100%; font-size:12px; padding:6px 8px;">
+          </div>
+          <div style="flex:1">
+            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px">Default Category</label>
+            <select id="hub-rule-category" style="width:100%; font-size:12px; padding:6px 8px;"></select>
+          </div>
+        </div>
+        <button class="primary" style="width:100%" onclick="saveCustomSmsRule()">💾 Save Custom SMS Rule</button>
+      </div>
+
+      <!-- Active Custom Rules -->
+      <div id="hub-custom-rules-container" style="margin-top:10px"></div>
+    </div>
+
+    <!-- 3. OFFLINE BACKUP & DIAGNOSTICS -->
+    <div style="margin-bottom:16px;">
+      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">💾 Local Storage & Diagnostics</h3>
+      <div class="card" style="padding:14px; background:rgba(30,41,59,0.5)">
+        <div class="flex-gap" style="margin-bottom:8px">
+          <button class="primary" style="flex:1" onclick="syncOfflineTransactionsFromUI()">🔄 Sync Offline SMS</button>
+          <button class="alt" style="flex:1" onclick="triggerNativeTestFromHub()">🔔 Test Alert</button>
+        </div>
+        <button class="alt" style="width:100%; font-size:12px; padding:8px" onclick="copyWebhookUrl()">📋 Copy Personal Webhook URL</button>
+      </div>
+    </div>
+
+    <!-- 4. SIGN OUT -->
+    <button class="alt" style="width:100%; color:var(--danger); border-color:rgba(239,68,68,0.3); padding:10px" onclick="logout()">Sign Out of Account</button>
+  </div>
+</div>
 
 <!-- Manual Entry Modal -->
 <div id="modal-manual" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true" onclick="closeModal(event, 'modal-manual')">
@@ -2843,21 +2961,23 @@ function syncOfflineTransactionsFromUI() {
 function updateBiometricUI() {
   if (!window.AndroidApp || typeof window.AndroidApp.isBiometricLockEnabled !== 'function') return;
   const isEnabled = window.AndroidApp.isBiometricLockEnabled();
+  
+  // Settings tab badge & button
   const badge = document.getElementById('biometric-status-badge');
   const btn = document.getElementById('btn-toggle-biometric');
-  if (badge && btn) {
-    if (isEnabled) {
-      badge.textContent = 'Active 🔒';
-      badge.className = 'badge green';
-      btn.textContent = 'Disable Fingerprint Lock';
-      btn.className = 'alt';
-    } else {
-      badge.textContent = 'Disabled';
-      badge.className = 'badge';
-      btn.textContent = 'Enable Fingerprint Lock';
-      btn.className = 'primary';
-    }
-  }
+  // Hub badge & button
+  const hubBadge = document.getElementById('hub-biometric-badge');
+  const hubBtn = document.getElementById('hub-btn-biometric');
+
+  const text = isEnabled ? 'Active 🔒' : 'Disabled';
+  const cls = isEnabled ? 'badge green' : 'badge';
+  const btnText = isEnabled ? 'Disable Fingerprint Lock' : 'Enable Fingerprint Lock';
+  const btnCls = isEnabled ? 'alt' : 'primary';
+
+  if (badge) { badge.textContent = text; badge.className = cls; }
+  if (btn) { btn.textContent = btnText; btn.className = btnCls; }
+  if (hubBadge) { hubBadge.textContent = text; hubBadge.className = cls; }
+  if (hubBtn) { hubBtn.textContent = btnText; hubBtn.className = btnCls; }
 }
 
 function toggleBiometricLock() {
@@ -2872,6 +2992,194 @@ function toggleBiometricLock() {
     updateBiometricUI();
     toast('🔓 Fingerprint lock disabled', 'info');
   }
+}
+
+// --- 11. USER HUB & VISUAL SMS RULE BUILDER ---
+function openUserHubModal() {
+  const modal = document.getElementById('modal-user-hub');
+  if (!modal) return;
+
+  // Set user email and avatar letter
+  const emailEl = document.getElementById('hub-user-email');
+  const avatarLetterEl = document.getElementById('hub-avatar-initial');
+  const topAvatarInitial = document.getElementById('user-avatar-initial');
+  
+  if (state.user && state.user.email) {
+    if (emailEl) emailEl.textContent = state.user.email;
+    const initial = state.user.email.charAt(0).toUpperCase();
+    if (avatarLetterEl) avatarLetterEl.textContent = initial;
+    if (topAvatarInitial) topAvatarInitial.textContent = initial;
+  }
+
+  // Populate category dropdown
+  const catSelect = document.getElementById('hub-rule-category');
+  if (catSelect && state.budget && Array.isArray(state.budget.categories)) {
+    catSelect.innerHTML = state.budget.categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+  }
+
+  // Sync Biometric Badge in Hub
+  updateBiometricUI();
+
+  // Render Custom Rules List
+  renderCustomSmsRulesList();
+
+  modal.classList.add('active');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function testCustomSmsRule() {
+  const input = document.getElementById('hub-sms-input');
+  const preview = document.getElementById('hub-preview-result');
+  const keywordInput = document.getElementById('hub-rule-keyword');
+  if (!input || !preview) return;
+
+  const text = input.value.trim();
+  if (!text) {
+    preview.textContent = 'Paste an SMS above to preview...';
+    preview.style.color = '#c084fc';
+    return;
+  }
+
+  // Extract amount
+  let amount = 0;
+  const amtMatch = text.match(/(?:EGP|LE|L\.E|ج\.م|مبلغ|amount of)\s*([0-9,.]+)/i) || text.match(/([0-9,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جم)/i);
+  if (amtMatch) {
+    amount = parseFloat(amtMatch[1].replace(/,/g, ''));
+  }
+
+  // Extract merchant / source
+  let merchant = 'Unknown / Card';
+  const merchMatch = text.match(/@\s*([^,\n.]+)/i) || text.match(/(?:at|لدى|from|إلى)\s+([^,\n.]+)/i);
+  if (merchMatch) {
+    merchant = merchMatch[1].trim();
+  }
+
+  const isIncome = /(?:received|recieved|إيداع|اضافة راتبك|استلام|refund)/i.test(text);
+  const kind = isIncome ? 'Incoming' : 'Outgoing';
+
+  if (amount > 0) {
+    preview.innerHTML = `✅ <span style="color:#4ade80">EGP ${amount.toFixed(2)}</span> • <span style="color:#38bdf8">${merchant}</span> • <em>${kind}</em>`;
+    if (keywordInput && !keywordInput.value && merchant !== 'Unknown / Card') {
+      keywordInput.value = merchant.split(' ')[0];
+    }
+  } else {
+    preview.innerHTML = `⚠️ <span style="color:#f87171">No amount detected yet. Ensure amount (e.g. EGP 100) is present.</span>`;
+  }
+}
+
+function getStoredCustomRules() {
+  try {
+    return JSON.parse(localStorage.getItem('custom_sms_rules') || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveCustomSmsRule() {
+  const keywordInput = document.getElementById('hub-rule-keyword');
+  const catSelect = document.getElementById('hub-rule-category');
+  const smsInput = document.getElementById('hub-sms-input');
+
+  const keyword = keywordInput ? keywordInput.value.trim() : '';
+  const category = catSelect ? catSelect.value : '';
+
+  if (!keyword) {
+    toast('Please enter a keyword or merchant name for the rule', 'error');
+    return;
+  }
+
+  const rules = getStoredCustomRules();
+  const newRule = {
+    id: 'rule_' + Date.now(),
+    name: keyword,
+    keyword: keyword,
+    category: category,
+    created_at: new Date().toISOString()
+  };
+
+  rules.push(newRule);
+  localStorage.setItem('custom_sms_rules', JSON.stringify(rules));
+
+  // Sync to Native Android App
+  if (window.AndroidApp && typeof window.AndroidApp.syncCustomSmsRules === 'function') {
+    window.AndroidApp.syncCustomSmsRules(JSON.stringify(rules));
+  }
+
+  // Save to DB
+  fetch('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'addSmsRule', args: [newRule] })
+  }).catch(() => {});
+
+  if (keywordInput) keywordInput.value = '';
+  if (smsInput) smsInput.value = '';
+  testCustomSmsRule();
+  renderCustomSmsRulesList();
+  toast(`✅ Rule saved: "${keyword}" ➔ ${category}`, 'success');
+}
+
+function deleteCustomSmsRule(ruleId) {
+  let rules = getStoredCustomRules();
+  rules = rules.filter(r => r.id !== ruleId);
+  localStorage.setItem('custom_sms_rules', JSON.stringify(rules));
+
+  if (window.AndroidApp && typeof window.AndroidApp.syncCustomSmsRules === 'function') {
+    window.AndroidApp.syncCustomSmsRules(JSON.stringify(rules));
+  }
+
+  fetch('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'deleteSmsRule', args: [ruleId] })
+  }).catch(() => {});
+
+  renderCustomSmsRulesList();
+  toast('Rule deleted', 'info');
+}
+
+function renderCustomSmsRulesList() {
+  const container = document.getElementById('hub-custom-rules-container');
+  if (!container) return;
+
+  const rules = getStoredCustomRules();
+  if (rules.length === 0) {
+    container.innerHTML = `<small style="color:var(--text-muted); display:block; text-align:center; padding:8px">No custom SMS rules saved yet.</small>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:6px">Active Custom Rules (${rules.length}):</div>
+    <div style="display:flex; flex-direction:column; gap:6px">
+      ${rules.map(r => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6); padding:8px 12px; border-radius:8px; border:1px solid var(--surface-border)">
+          <div>
+            <strong style="font-size:12px; color:#fff">${r.name}</strong>
+            <span style="font-size:11px; color:var(--text-muted); margin-left:6px">➔ ${r.category || 'Uncategorized'}</span>
+          </div>
+          <button class="modal-close" style="font-size:16px; color:var(--danger); padding:2px 6px" onclick="deleteCustomSmsRule('${r.id}')" title="Delete rule">&times;</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function triggerNativeTestFromHub() {
+  if (window.AndroidApp && typeof window.AndroidApp.sendNativeTestNotification === 'function') {
+    window.AndroidApp.sendNativeTestNotification();
+  } else {
+    sendTestPush();
+  }
+}
+
+function copyWebhookUrl() {
+  const token = window.AndroidApp && typeof window.AndroidApp.getWebhookToken === 'function' ? window.AndroidApp.getWebhookToken() : '';
+  const url = `${window.location.origin}/api/webhook${token ? '?key=' + token : ''}`;
+  navigator.clipboard.writeText(url).then(() => {
+    toast('📋 Webhook URL copied to clipboard!', 'success');
+  }).catch(() => {
+    toast(url, 'info');
+  });
 }
 
 // Kickoff

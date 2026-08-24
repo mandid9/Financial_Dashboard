@@ -19,6 +19,9 @@ import java.nio.charset.StandardCharsets;
 public class NotificationActionReceiver extends BroadcastReceiver {
 
     public static final String DEFAULT_WEBHOOK_URL = "https://finance-dashboard-next-two.vercel.app/api/webhook";
+    public static final String ACTION_CONFIRM = "com.finance.dashboard.ACTION_CONFIRM";
+    public static final String ACTION_CATEGORY = "com.finance.dashboard.ACTION_CATEGORY";
+    public static final String ACTION_DISMISS = "com.finance.dashboard.ACTION_DISMISS";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -30,7 +33,7 @@ public class NotificationActionReceiver extends BroadcastReceiver {
             nm.cancel(notificationId);
         }
 
-        if (SmsReceiver.ACTION_DISMISS.equals(action)) {
+        if (ACTION_DISMISS.equals(action)) {
             return;
         }
 

@@ -404,6 +404,30 @@ export async function POST(req) {
         return NextResponse.json({ success: true });
       }
 
+      case 'addSmsRule': {
+        const [rule] = args;
+        try {
+          await supabase.from('user_sms_rules').insert([{
+            user_id: userId,
+            pattern_name: rule.name || rule.keyword,
+            contains_keyword: rule.keyword,
+            default_category_id: rule.categoryId || null,
+            is_active: true
+          }]);
+        } catch (e) {
+          console.warn('user_sms_rules notice:', e.message);
+        }
+        return NextResponse.json({ success: true });
+      }
+
+      case 'deleteSmsRule': {
+        const [ruleId] = args;
+        try {
+          await supabase.from('user_sms_rules').delete().eq('id', ruleId).eq('user_id', userId);
+        } catch (e) {}
+        return NextResponse.json({ success: true });
+      }
+
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
