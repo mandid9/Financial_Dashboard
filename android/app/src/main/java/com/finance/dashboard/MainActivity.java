@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -24,6 +25,11 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import java.util.ArrayList;
@@ -42,11 +48,29 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint("SetJavaScriptEnabled")
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // 1. Edge-to-Edge System Bar Configuration (Google Android Edge-to-Edge Skill)
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        if (insetsController != null) {
+            insetsController.setAppearanceLightStatusBars(false); // Dark status bar content for dark theme
+            insetsController.setAppearanceLightNavigationBars(false);
+        }
+
         setContentView(R.layout.activity_main);
 
         webView = findViewById(R.id.webview);
         swipeRefresh = findViewById(R.id.swipe_refresh);
         progressBar = findViewById(R.id.progress_bar);
+
+        // 2. Dynamic Window Insets Handling (Status Bars, Navigation Bars, IME Keyboard)
+        ViewCompat.setOnApplyWindowInsetsListener(swipeRefresh, (v, windowInsets) -> {
+            Insets systemBars = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+            );
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return windowInsets;
+        });
 
         setupWebView();
         setupSwipeRefresh();
@@ -74,18 +98,18 @@ public class MainActivity extends AppCompatActivity {
         settings.setLoadWithOverviewMode(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        // Enable hardware acceleration
+        // Hardware acceleration for fluid 60fps/120fps scrolling
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
-        // Expose native JavaScript bridge
+        // Expose secure JavaScript bridge interface
         webView.addJavascriptInterface(new WebAppInterface(this), "AndroidApp");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                if (url.startsWith(DASHBOARD_URL) || url.contains("vercel.app") || url.contains("supabase.co")) {
-                    return false; // Load inside app
+                if (url.startsWith(DASHBOARD_URL) || url.contains("vercel.app") || url.contains("supabase.co") || url.contains("accounts.google.com")) {
+                    return false; // Load inside app WebView
                 }
                 return false;
             }
@@ -194,8 +218,10 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void setWebhookToken(String token) {
-            SharedPreferences prefs = mContext.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
-            prefs.edit().putString("webhook_token", token).apply();
+            if (token != null) {
+                SharedPreferences prefs = mContext.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+                prefs.edit().putString("webhook_token", token.trim()).apply();
+            }
         }
 
         @JavascriptInterface
