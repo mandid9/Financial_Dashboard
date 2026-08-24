@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
 
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BPnDeX4aUsrrHasl3PVoX9Cc2jWmbN9Doi1PXThwupBsJOjFWLioEWEmaXcBUAhA3Ezl3aIUFk81rYA8i3jFYXA';
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY || '';
 
 export async function GET() {
   return NextResponse.json({ publicKey: VAPID_PUBLIC_KEY });
@@ -17,10 +17,10 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 });
     }
 
-    // Upsert subscription into push_subscriptions table
     const { error } = await supabase
       .from('push_subscriptions')
       .upsert({
+        user_id: user.id,
         endpoint: subscription.endpoint,
         keys: subscription.keys,
         created_at: new Date().toISOString()
@@ -28,7 +28,6 @@ export async function POST(req) {
 
     if (error) {
       console.warn('Supabase push_subscriptions table error:', error.message);
-      // If table doesn't exist yet, we still return ok so local test flow works
       return NextResponse.json({ success: true, warning: error.message });
     }
 
@@ -45,7 +44,11 @@ export async function DELETE(req) {
   try {
     const { endpoint } = await req.json();
     if (endpoint) {
-      await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
+      await supabase
+        .from('push_subscriptions')
+        .delete()
+        .eq('endpoint', endpoint)
+        .or(`user_id.eq.${user.id},user_id.is.null`);
     }
     return NextResponse.json({ success: true });
   } catch (err) {

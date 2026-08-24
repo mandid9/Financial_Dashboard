@@ -62,6 +62,7 @@ export async function GET(req) {
     const { data: categories, error: catError } = await supabase
       .from('categories')
       .select('id, name, planned_amount, sort_order')
+      .or(`user_id.eq.${user.id},user_id.is.null`)
       .order('sort_order', { ascending: true });
     if (catError) throw catError;
 
@@ -69,6 +70,7 @@ export async function GET(req) {
     const { data: allTransactions, error: txError } = await supabase
       .from('transactions')
       .select('id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id, categories(name)')
+      .or(`user_id.eq.${user.id},user_id.is.null`)
       .order('transaction_date', { ascending: false });
     if (txError) throw txError;
 
