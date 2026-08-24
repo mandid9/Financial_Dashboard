@@ -2534,6 +2534,11 @@ function carrySelected() {
 let pushSubscription = null;
 
 async function initPushNotifications() {
+  if (window.AndroidApp) {
+    updatePushUI('native_active');
+    return;
+  }
+
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     updatePushUI('unsupported');
     return;
@@ -2611,23 +2616,45 @@ function updatePushUI(status) {
   const btnTest = document.getElementById('btn-test-push');
   if (!badge || !btnToggle) return;
 
-  if (status === 'subscribed') {
+  if (status === 'native_active' || window.AndroidApp) {
+    badge.textContent = 'Native Active ✅';
+    badge.className = 'badge green';
+    btnToggle.textContent = 'Native App Notifications Active';
+    btnToggle.className = 'alt';
+    btnToggle.disabled = true;
+    if (btnTest) {
+      btnTest.style.display = 'inline-flex';
+      btnTest.onclick = () => {
+        if (typeof window.AndroidApp.sendNativeTestNotification === 'function') {
+          window.AndroidApp.sendNativeTestNotification();
+        } else if (typeof window.AndroidApp.vibrate === 'function') {
+          window.AndroidApp.vibrate(60);
+          toast('🔔 Native notification engine is active on this device', 'success');
+        }
+      };
+    }
+  } else if (status === 'subscribed') {
     badge.textContent = 'Active ✓';
     badge.className = 'badge green';
     btnToggle.textContent = 'Disable Notifications';
     btnToggle.className = 'alt';
-    if (btnTest) btnTest.style.display = 'inline-flex';
+    btnToggle.disabled = false;
+    if (btnTest) {
+      btnTest.style.display = 'inline-flex';
+      btnTest.onclick = sendTestPush;
+    }
   } else if (status === 'unsubscribed') {
     badge.textContent = 'Disabled';
     badge.className = 'badge';
     btnToggle.textContent = 'Enable Notifications';
     btnToggle.className = 'primary';
+    btnToggle.disabled = false;
     if (btnTest) btnTest.style.display = 'none';
   } else if (status === 'unsupported') {
-    badge.textContent = 'Not Supported';
+    badge.textContent = 'Web Push Unsupported';
     badge.className = 'badge red';
     btnToggle.disabled = true;
-    btnToggle.textContent = 'Unsupported in Browser';
+    btnToggle.textContent = 'Use Native Android App or Chrome';
   } else {
     badge.textContent = 'Permission Needed';
     badge.className = 'badge yellow';

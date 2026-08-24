@@ -180,4 +180,38 @@ public class SmsReceiver extends BroadcastReceiver {
             am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi);
         }
     }
+
+    public static void showTestNotification(Context context) {
+        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    context.getString(R.string.channel_name),
+                    NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription(context.getString(R.string.channel_desc));
+            channel.enableVibration(true);
+            nm.createNotificationChannel(channel);
+        }
+
+        int notificationId = 9999;
+        Intent tapIntent = new Intent(context, MainActivity.class);
+        tapIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent tapPendingIntent = PendingIntent.getActivity(
+                context, notificationId, tapIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
+        );
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("🔔 Financial Dashboard Active")
+                .setContentText("Bank SMS listener and quick-action chips are active!")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(tapPendingIntent);
+
+        nm.notify(notificationId, builder.build());
+    }
 }

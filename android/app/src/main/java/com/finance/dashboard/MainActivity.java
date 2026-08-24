@@ -354,5 +354,13 @@ public class MainActivity extends AppCompatActivity {
         public void promptBiometricAuth() {
             mActivity.runOnUiThread(mActivity::showBiometricPrompt);
         }
+
+        @JavascriptInterface
+        public void sendNativeTestNotification() {
+            mActivity.runOnUiThread(() -> {
+                SmsReceiver.showTestNotification(mActivity);
+                Toast.makeText(mActivity, "🔔 Test notification sent to status bar!", Toast.LENGTH_SHORT).show();
+            });
+        }
     }
 }
