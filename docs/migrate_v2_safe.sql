@@ -1,4 +1,4 @@
--- =============================================================================
+﻿-- =============================================================================
 -- Financial Dashboard — v2 Multi-User Migration (SAFE VERSION)
 -- Run in: Supabase Studio -> SQL Editor -> New query (paste EVERYTHING)
 -- Idempotent: safe to run multiple times.
@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS public.pending_sms (
   source_or_merchant TEXT,
   detected_kind      TEXT DEFAULT 'outgoing',
   status             TEXT DEFAULT 'pending' CHECK (status IN ('pending','confirmed','dismissed')),
+  idempotency_key    TEXT,
   received_at        TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
 
@@ -113,3 +114,7 @@ WHERE n.nspname = 'public'
 
 SELECT count(*) AS your_backfilled_categories FROM public.categories WHERE user_id IS NOT NULL;
 SELECT count(*) AS your_backfilled_transactions FROM public.transactions WHERE user_id IS NOT NULL;
+
+ALTER TABLE public.pending_sms ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_sms_idempotency ON public.pending_sms(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+

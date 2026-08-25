@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { supabase } from '@/lib/supabase';
 import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
@@ -57,18 +57,7 @@ async function resolveUserAndAuthorize(req) {
     return { authorized: true, userId: primaryUser?.user_id || null };
   }
 
-  // 4. Companion app fallback: Look up primary user to guarantee no SMS is dropped
-  const { data: defaultUser } = await supabase
-    .from('user_webhook_tokens')
-    .select('user_id')
-    .limit(1)
-    .maybeSingle();
-
-  if (defaultUser?.user_id) {
-    return { authorized: true, userId: defaultUser.user_id };
-  }
-
-  return { authorized: true, userId: null };
+  return { authorized: false, userId: null };
 }
 
 // GET /api/webhook - Authenticated diagnostic check
@@ -95,6 +84,7 @@ export async function POST(req) {
     let body = rawBody;
     let isPendingQueue = false;
     let customCategory = null;
+    let idempotencyKey = null;
 
     try {
       const json = JSON.parse(rawBody);
@@ -106,6 +96,7 @@ export async function POST(req) {
         if (json.category) {
           customCategory = json.category;
         }
+        if (json.idempotency_key) idempotencyKey = String(json.idempotency_key).slice(0, 160);
       }
     } catch (e) {
       if (rawBody.startsWith('body=') || rawBody.startsWith('message=')) {
@@ -133,7 +124,7 @@ export async function POST(req) {
             if (amount && amount > 0) {
               const merchant = rule.merchant_extractor || rule.pattern_name;
               if (isPendingQueue) {
-                return await queuePending(body, amount, merchant, 'outgoing', userId);
+                return await queuePending(body, amount, merchant, 'outgoing', userId, idempotencyKey);
               }
               return await insertOutgoing(amount, merchant, rule.pattern_name, now, userId, rule.default_category_id);
             }
@@ -147,7 +138,7 @@ export async function POST(req) {
       if (isPendingQueue) {
         const amtMatch = body.match(/بمبلغ\s*([\d,.]+)\s*EGP/i) || body.match(/([\d,.]+)\s*EGP/i);
         const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
-        return await queuePending(body, amount, 'Bank Transfer — Salary', 'incoming', userId);
+        return await queuePending(body, amount, 'Bank Transfer — Salary', 'incoming', userId, idempotencyKey);
       }
       return await handleSalarySms(body, now, userId);
     }
@@ -158,7 +149,7 @@ export async function POST(req) {
       const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
       const fromMatch = body.match(/from\s+([^\s]+)/i);
       const source = `Instapay Sent${fromMatch ? ` (${fromMatch[1]})` : ''}`;
-      if (isPendingQueue) return await queuePending(body, amount, source, 'outgoing', userId);
+      if (isPendingQueue) return await queuePending(body, amount, source, 'outgoing', userId, idempotencyKey);
       return await handleInstapaySent(body, now, userId, customCategory);
     }
 
@@ -168,7 +159,7 @@ export async function POST(req) {
       const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
       const fromMatch = body.match(/from\s+([^\s]+)/i);
       const source = `Instapay Received${fromMatch ? ` from ${fromMatch[1]}` : ''}`;
-      if (isPendingQueue) return await queuePending(body, amount, source, 'incoming', userId);
+      if (isPendingQueue) return await queuePending(body, amount, source, 'incoming', userId, idempotencyKey);
       return await handleInstapayReceived(body, now, userId);
     }
 
@@ -180,7 +171,7 @@ export async function POST(req) {
       const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
       const merchMatch = body.match(/@([^,]+),?/);
       const merchant = merchMatch ? merchMatch[1].trim() : cardStr;
-      if (isPendingQueue) return await queuePending(body, amount, merchant, 'outgoing', userId);
+      if (isPendingQueue) return await queuePending(body, amount, merchant, 'outgoing', userId, idempotencyKey);
       return await handleDebitCardSms(body, now, userId, customCategory);
     }
 
@@ -192,7 +183,7 @@ export async function POST(req) {
       const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
       const merchMatch = body.match(/@([^,]+),?/);
       const merchant = merchMatch ? merchMatch[1].trim() : cardStr;
-      if (isPendingQueue) return await queuePending(body, amount, merchant, 'outgoing', userId);
+      if (isPendingQueue) return await queuePending(body, amount, merchant, 'outgoing', userId, idempotencyKey);
       return await handleCreditCardSms(body, now, userId, customCategory);
     }
 
@@ -209,7 +200,11 @@ export async function POST(req) {
   }
 }
 
-async function queuePending(rawMessage, amount, sourceOrMerchant, kind, userId) {
+async function queuePending(rawMessage, amount, sourceOrMerchant, kind, userId, idempotencyKey = null) {
+  let existingQuery = supabase.from("pending_sms").select("id").eq("user_id", userId).eq("status", "pending");
+  existingQuery = idempotencyKey ? existingQuery.eq("idempotency_key", idempotencyKey) : existingQuery.eq("raw_message", rawMessage);
+  const { data: existing } = await existingQuery.limit(1);
+  if (existing && existing.length > 0) return new NextResponse("Already queued", { status: 200 });
   const { error } = await supabase
     .from('pending_sms')
     .insert([{
@@ -218,7 +213,8 @@ async function queuePending(rawMessage, amount, sourceOrMerchant, kind, userId) 
       amount: amount || 0,
       source_or_merchant: sourceOrMerchant || 'Pending Transaction',
       detected_kind: kind || 'outgoing',
-      status: 'pending'
+      status: 'pending',
+       idempotency_key: idempotencyKey
     }]);
 
   if (error) throw error;
@@ -420,3 +416,4 @@ async function handleReversal(message, time, userId) {
 
   return new NextResponse('Success: Reversal logged', { status: 200 });
 }
+

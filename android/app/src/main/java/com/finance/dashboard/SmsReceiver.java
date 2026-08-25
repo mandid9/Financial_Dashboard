@@ -1,191 +1,97 @@
-package com.finance.dashboard;
+﻿package com.finance.dashboard;
 
+import android.app.AlarmManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
 import android.telephony.SmsMessage;
-import android.util.Log;
-
 import androidx.core.app.NotificationCompat;
 
-import org.json.JSONObject;
-
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-
 public class SmsReceiver extends BroadcastReceiver {
-
     public static final String CHANNEL_ID = "financial_alerts";
-    private static final String TAG = "FinanceSmsReceiver";
 
-    @Override
-    public void onReceive(Context context, Intent intent) {
+    @Override public void onReceive(Context context, Intent intent) {
         if (!"android.provider.Telephony.SMS_RECEIVED".equals(intent.getAction())) return;
-
         Bundle bundle = intent.getExtras();
         if (bundle == null) return;
-
         Object[] pdus = (Object[]) bundle.get("pdus");
         if (pdus == null || pdus.length == 0) return;
-
         String format = bundle.getString("format");
-        StringBuilder fullMsg = new StringBuilder();
-        String sender = "";
-
+        StringBuilder body = new StringBuilder();
         for (Object pdu : pdus) {
-            SmsMessage sms;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                sms = SmsMessage.createFromPdu((byte[]) pdu, format);
-            } else {
-                sms = SmsMessage.createFromPdu((byte[]) pdu);
-            }
-            if (sms != null) {
-                fullMsg.append(sms.getMessageBody());
-                sender = sms.getOriginatingAddress();
-            }
+            SmsMessage sms = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                    ? SmsMessage.createFromPdu((byte[]) pdu, format)
+                    : SmsMessage.createFromPdu((byte[]) pdu);
+            if (sms != null) body.append(sms.getMessageBody());
         }
-
-        String messageBody = fullMsg.toString();
-        BankParser.ParsedTransaction tx = BankParser.parse(context, messageBody);
-
-        if (tx.isMatched && tx.amount > 0) {
-            // 1. Immediately store in local offline backup queue
-            TransactionBackupStore.saveTransaction(context, messageBody, tx.amount, tx.merchant, tx.kind, tx.defaultCategory, "pending");
-
-            // 2. Dispatch background webhook to sync with Dashboard
-            sendWebhookBackground(context, tx);
-
-            // 3. Show clean heads-up notification (tap opens Dashboard directly)
-            showCleanNotification(context, tx);
-        }
+        BankParser.ParsedTransaction tx = BankParser.parse(context, body.toString());
+        if (!tx.isMatched || tx.amount <= 0) return;
+        long localId = TransactionBackupStore.saveTransaction(context, tx.rawMessage, tx.amount,
+                tx.merchant, tx.kind, tx.defaultCategory, "pending");
+        showActionNotification(context, tx, localId);
     }
 
-    private void showCleanNotification(Context context, BankParser.ParsedTransaction tx) {
+    private void showActionNotification(Context context, BankParser.ParsedTransaction tx, long localId) {
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    context.getString(R.string.channel_name),
-                    NotificationManager.IMPORTANCE_HIGH
-            );
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
+                    context.getString(R.string.channel_name), NotificationManager.IMPORTANCE_HIGH);
             channel.setDescription(context.getString(R.string.channel_desc));
             channel.enableVibration(true);
             nm.createNotificationChannel(channel);
         }
-
-        int notificationId = (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
-        String formattedAmt = String.format("%.2f", tx.amount);
-
-        // Content intent (Tapping opens the app dashboard directly)
-        Intent tapIntent = new Intent(context, MainActivity.class);
-        tapIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent tapPendingIntent = PendingIntent.getActivity(
-                context, notificationId, tapIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
-        );
-
-        String title = "outgoing".equals(tx.kind)
-                ? "💸 EGP " + formattedAmt + " Spent @ " + tx.merchant
-                : "💰 EGP " + formattedAmt + " Income Received";
-
-        String body = tx.merchant + " • Tap to open Financial Dashboard";
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(title)
-                .setContentText(body)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                .setAutoCancel(true)
-                .setContentIntent(tapPendingIntent);
-
-        nm.notify(notificationId, builder.build());
+        int notificationId = (int) (localId % Integer.MAX_VALUE);
+        PendingIntent confirm = action(context, NotificationActionReceiver.ACTION_CONFIRM, tx, localId, notificationId, 0);
+        PendingIntent category = action(context, NotificationActionReceiver.ACTION_CATEGORY, tx, localId, notificationId, 1);
+        PendingIntent dismiss = action(context, NotificationActionReceiver.ACTION_DISMISS, tx, localId, notificationId, 2);
+        Intent open = new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent content = PendingIntent.getActivity(context, notificationId, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | immutable());
+        String title = "outgoing".equals(tx.kind) ? "💸 EGP " + String.format("%.2f", tx.amount) + " Spent" : "💰 EGP " + String.format("%.2f", tx.amount) + " Received";
+        NotificationCompat.Builder b = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(title)
+                .setContentText(tx.merchant + " • Choose an action")
+                .setPriority(NotificationCompat.PRIORITY_HIGH).setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setAutoCancel(true).setContentIntent(content)
+                .addAction(new NotificationCompat.Action(0, "Confirm", confirm))
+                .addAction(new NotificationCompat.Action(0, tx.defaultCategory.isEmpty() ? "Categorize" : tx.defaultCategory, category))
+                .addAction(new NotificationCompat.Action(0, "Dismiss", dismiss));
+        nm.notify(notificationId, b.build());
+        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        Intent timeout = new Intent(context, TimeoutReceiver.class).putExtra("local_id", localId)
+                .putExtra("notification_id", notificationId).putExtra("raw_message", tx.rawMessage)
+                .putExtra("amount", tx.amount).putExtra("merchant", tx.merchant).putExtra("kind", tx.kind);
+        PendingIntent timeoutPi = PendingIntent.getBroadcast(context, notificationId, timeout,
+                PendingIntent.FLAG_UPDATE_CURRENT | immutable());
+        if (alarms != null) alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + 5 * 60 * 1000L, timeoutPi);
     }
 
-    private void sendWebhookBackground(Context context, BankParser.ParsedTransaction tx) {
-        new Thread(() -> {
-            try {
-                SharedPreferences financePrefs = context.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
-                String webhookUrl = financePrefs.getString("webhook_url", NotificationActionReceiver.DEFAULT_WEBHOOK_URL);
-                String webhookToken = financePrefs.getString("webhook_token", "");
-
-                String endpoint = webhookUrl;
-                if (!webhookToken.isEmpty()) {
-                    endpoint += (endpoint.contains("?") ? "&" : "?") + "key=" + webhookToken;
-                }
-
-                URL url = new URL(endpoint);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
-                conn.setDoOutput(true);
-
-                JSONObject payload = new JSONObject();
-                payload.put("message", tx.rawMessage);
-                if (tx.defaultCategory != null && !tx.defaultCategory.isEmpty()) {
-                    payload.put("category", tx.defaultCategory);
-                }
-
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
-                }
-
-                int code = conn.getResponseCode();
-                conn.disconnect();
-
-                if (code >= 200 && code < 300) {
-                    TransactionBackupStore.markSynced(context, tx.rawMessage);
-                    Log.i(TAG, "Transaction synced to dashboard: " + tx.amount + " EGP");
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "Background webhook send error: " + e.getMessage());
-            }
-        }).start();
+    private PendingIntent action(Context c, String action, BankParser.ParsedTransaction tx, long id, int nid, int request) {
+        Intent i = new Intent(c, NotificationActionReceiver.class).setAction(action)
+                .putExtra("local_id", id).putExtra("notification_id", nid).putExtra("raw_message", tx.rawMessage)
+                .putExtra("amount", tx.amount).putExtra("kind", tx.kind).putExtra("category", tx.defaultCategory);
+        return PendingIntent.getBroadcast(c, nid * 10 + request, i,
+                PendingIntent.FLAG_UPDATE_CURRENT | immutable());
     }
+    private static int immutable() { return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0; }
 
     public static void showTestNotification(Context context) {
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    context.getString(R.string.channel_name),
-                    NotificationManager.IMPORTANCE_HIGH
-            );
-            channel.setDescription(context.getString(R.string.channel_desc));
-            channel.enableVibration(true);
-            nm.createNotificationChannel(channel);
-        }
-
-        int notificationId = 9999;
-        Intent tapIntent = new Intent(context, MainActivity.class);
-        tapIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent tapPendingIntent = PendingIntent.getActivity(
-                context, notificationId, tapIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
-        );
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("🔔 Financial Dashboard Active")
-                .setContentText("Bank SMS listener is running. Tap to open dashboard.")
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .setContentIntent(tapPendingIntent);
-
-        nm.notify(notificationId, builder.build());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID,
+                context.getString(R.string.channel_name), NotificationManager.IMPORTANCE_HIGH));
+        Intent open = new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pi = PendingIntent.getActivity(context, 9999, open, PendingIntent.FLAG_UPDATE_CURRENT | immutable());
+        nm.notify(9999, new NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("🔔 Financial Dashboard Active").setContentText("Bank SMS listener is running.")
+                .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true).setContentIntent(pi).build());
     }
 }
+

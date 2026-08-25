@@ -1,4 +1,4 @@
--- =============================================================================
+﻿-- =============================================================================
 -- Financial Dashboard - Multi-User Architecture & Safe Migration (v2.0)
 -- Target User: kr.wn20@gmail.com
 -- =============================================================================
@@ -140,3 +140,7 @@ CREATE POLICY "User pending sms policy" ON pending_sms
 DROP POLICY IF EXISTS "User webhook tokens policy" ON user_webhook_tokens;
 CREATE POLICY "User webhook tokens policy" ON user_webhook_tokens
   FOR ALL USING (auth.uid() = user_id);
+
+ALTER TABLE public.pending_sms ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_sms_idempotency ON public.pending_sms(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+

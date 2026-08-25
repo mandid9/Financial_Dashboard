@@ -1,4 +1,4 @@
-package com.finance.dashboard;
+﻿package com.finance.dashboard;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
@@ -99,7 +99,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 2. Check biometric lock on app open/resume if user enabled it
         SharedPreferences prefs = getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
-        if (prefs.getBoolean("biometric_lock_enabled", false) && isBiometricSupported()) {
+        if (prefs.getBoolean("biometric_lock_enabled", false) && isBiometricSupported() && !getPreferences(Context.MODE_PRIVATE).getBoolean("biometric_unlocked", false)) {
             showBiometricPrompt();
         }
     }
@@ -126,6 +126,7 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                     super.onAuthenticationSucceeded(result);
+                    getPreferences(Context.MODE_PRIVATE).edit().putBoolean("biometric_unlocked", true).apply();
                     runOnUiThread(() -> {
                         if (webView != null) {
                             webView.evaluateJavascript("if (window.onBiometricSuccess) window.onBiometricSuccess();", null);
@@ -155,6 +156,7 @@ public class MainActivity extends AppCompatActivity {
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
+         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSupportZoom(false);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
@@ -177,7 +179,8 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return false; // Handle all navigation internally
+                String host = request.getUrl().getHost();
+                return host == null || !host.equals("finance-dashboard-next-two.vercel.app");
             }
 
             @Override
@@ -294,6 +297,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        getPreferences(Context.MODE_PRIVATE).edit().putBoolean("biometric_unlocked", false).apply();
+    }
+
+    @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         webView.saveState(outState);
@@ -404,3 +413,4 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 }
+

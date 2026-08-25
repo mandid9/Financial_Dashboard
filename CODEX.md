@@ -151,8 +151,8 @@ finance-dashboard-next/
 | :--- | :--- | :--- |
 | **1. Database Schema Migration** | Multi-user schema defined in schema_v2_multiuser.sql | If you have not yet executed docs/migrate_v2_safe.sql in your Supabase SQL Editor, run it once to ensure user_id and sms_rules columns/tables exist. |
 | **2. Environment Variables** | Vercel production deployment | Ensure NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, WEBHOOK_SECRET, and CRON_SECRET are set in Vercel Environment Variables. |
-| **3. Android APK Keystore** | Release keystore checked in (ndroid/app/release.keystore) | Used for local debug/release building via Android Studio. Keep keystore passwords secure. |
-| **4. Google OAuth Redirects** | Route at /api/auth/google | In Supabase Dashboard $\rightarrow$ Auth $\rightarrow$ URL Configuration, ensure https://finance-dashboard-next-two.vercel.app is added to Allowed Redirect URLs. |
+| **3. Android APK Keystore** | Removed from repository | Release signing requires FINANCE_KEYSTORE* environment variables; never restore the keystore or passwords to source control. |
+| **4. Google OAuth Redirects** | Shared by browser and Android WebView | Allow production, preview, and local origins deliberately in Supabase; Android currently uses the web origin through WebView, not a native redirect URI. |
 
 ---
 
@@ -172,3 +172,89 @@ npm run build
 npx vercel --prod
 git push origin main
 `
+
+---
+
+## 🧭 6. Codex Agent Handoff — Android Stabilization (2026-08-25)
+
+### Current state
+- Completed: SMS receiver now creates a local pending item and presents Confirm/Categorize/Dismiss notification actions.
+- Completed: Five-minute timeout alarm sends untouched items to pending_sms.
+- Completed: Boot retry, header-based webhook token transport, strict webhook authorization, WebView mixed-content/navigation restrictions, biometric resume gating, and environment-only release signing.
+- Completed: Tracked android/app/release.keystore removed from the working tree and ignored going forward.
+- Validation: backend route syntax check and npm run lint pass.
+- Known limitation: Android build is not yet verified because the repository has no Gradle wrapper and no system Gradle executable.
+
+### Remaining work — execute in order
+1. Replace the SharedPreferences JSON backup with a transactional SQLite/Room queue. Preserve old JSON records through a one-time migration.
+2. Add stable idempotency keys to the DB migration and webhook inserts; make confirm, retry, and timeout operations safe under duplicate delivery.
+3. Align Android custom-rule fields with user_sms_rules (pattern_name, contains_keyword, default_category_id) and resolve category names/IDs consistently.
+4. Add Android unit tests for Arabic/English bank SMS parsing, notification action payloads, timeout transitions, retry state changes, and duplicate messages.
+5. Add the Gradle wrapper or document the required Gradle/Android SDK versions, then run debug and release builds.
+6. Update this section after every phase with files changed, validation results, and any blocker.
+
+### Agent instructions
+- Read this section before changing Android or webhook code.
+- Keep this section current during work so another agent can resume without reconstructing context.
+- Do not restore or commit signing keys/passwords.
+
+### Checkpoint — SQLite queue phase
+- Staged: TransactionBackupStore now uses SQLiteOpenHelper with indexed status queries.
+- Staged: Existing finance_tx_backup/saved_transactions JSON is migrated once into SQLite and then removed.
+- Staged: Confirmation, dismissal, timeout, and retry paths use local record IDs.
+- Next: add pending queue idempotency schema/API fields, align custom-rule category contracts, then add tests/build tooling.
+
+### Checkpoint — idempotency phase
+- Staged: pending_sms migration now adds idempotency_key plus a per-user unique partial index.
+- Staged: Android timeout/retry/confirm payloads carry the local queue ID.
+- Staged: webhook pending insertion accepts idempotency_key and rejects repeated pending requests.
+- Discovered: custom-rule UI used category while action API expected categoryId; this is being aligned now.
+
+### Checkpoint — current completion state
+- Applied: SQLiteOpenHelper offline queue with indexed status storage and one-time legacy JSON migration.
+- Applied: local record IDs now drive confirm/dismiss/timeout/retry status updates.
+- Applied: pending_sms idempotency_key migration and unique per-user partial index in both schema files.
+- Applied: Android timeout and retry payloads include idempotency_key; webhook rejects repeated pending inserts.
+- Applied: custom-rule UI now sends categoryId as well as category.
+- Applied: BankParserTest.java covers debit expense, Arabic salary, and unrelated SMS cases.
+- Validation pending: npm lint after final edits; Android Gradle test/build remains blocked because gradle and gradlew are unavailable.
+
+
+### Final checkpoint — 2026-08-25
+- Validation passed: node --check on webhook route and npm run lint.
+- Added but not executed: Android JUnit BankParserTest; execution requires Android/Gradle toolchain.
+- Android build blocker confirmed: no android/gradlew, no system gradle command, and no psql command for live migration verification.
+- Required deployment follow-up: run docs/migrate_v2_safe.sql in Supabase before using idempotency_key; provide CI/local FINANCE_KEYSTORE, FINANCE_KEYSTORE_PASSWORD, FINANCE_KEY_PASSWORD, and FINANCE_KEY_ALIAS only outside source control.
+- Working tree changes are intentionally uncommitted for human review.
+
+---
+
+## 🔐 7. Google OAuth / Browser–Android Session Audit (2026-08-25)
+
+### Verified architecture
+There is currently one Google OAuth implementation shared by both surfaces:
+
+1. Browser and Android WebView display the same login UI in public/index.html.
+2. Both call GET /api/auth/google.
+3. src/app/api/auth/google/route.js starts Supabase Google OAuth with redirect origin/index.html.
+4. The callback is handled in the page hash by handleOAuthHashCallback().
+5. The page posts the Supabase access/refresh tokens to POST /api/auth.
+6. src/app/api/auth/route.js validates the access token and sets finance_access_token and finance_refresh_token HTTP-only cookies.
+7. Android has no native Google OAuth SDK, client ID, custom scheme, app link, or OAuth callback activity. It loads the web flow in MainActivity's WebView.
+
+### Decision
+Keep one Supabase identity and one web OAuth flow. Do not add a separate native Google identity flow unless the app is later converted from a WebView container to a fully native client. Separate native and web OAuth flows would create avoidable redirect, account-linking, token-storage, and logout inconsistencies.
+
+### Organization plan
+- Treat browser and Android WebView as two clients of the same web session contract.
+- Centralize authentication documentation in this section and keep redirect URLs/environment settings in one deployment checklist.
+- Add an explicit auth-client marker for diagnostics only (browser vs Android WebView); never use it to create separate users.
+- Verify Google redirect allowlists for production, preview, local development, and Android WebView origins.
+- Add session-refresh cookie rotation: when refreshSession succeeds, update both HTTP-only cookies in the response.
+- Add an OAuth callback error state and clear URL fragment/query data after success or failure.
+- Test four paths: browser login, Android WebView login, browser logout followed by Android access, and Android logout followed by browser access.
+- Retain email/password as a fallback, but keep all providers mapped to the same Supabase user account.
+
+### Current conclusion
+The old web Google OAuth logic is still active and is also the Android app's effective Google OAuth path. No duplicate native OAuth implementation was found.
+

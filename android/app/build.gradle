@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     id 'com.android.application'
 }
 
@@ -11,26 +11,33 @@ android {
         minSdk 24
         targetSdk 34
         versionCode 1
-        versionName "1.0.0"
-
+        versionName "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    signingConfigs {
-        release {
-            storeFile file('release.keystore')
-            storePassword 'finance123'
-            keyAlias 'finance_key'
-            keyPassword 'finance123'
-            v1SigningEnabled true
-            v2SigningEnabled true
+    def releaseKeystore = System.getenv("FINANCE_KEYSTORE")
+    def releaseStorePassword = System.getenv("FINANCE_KEYSTORE_PASSWORD")
+    def releaseKeyPassword = System.getenv("FINANCE_KEY_PASSWORD")
+    if (releaseKeystore && releaseStorePassword && releaseKeyPassword) {
+        signingConfigs {
+            release {
+                storeFile file(releaseKeystore)
+                storePassword releaseStorePassword
+                keyAlias System.getenv("FINANCE_KEY_ALIAS") ?: "finance_key"
+                keyPassword releaseKeyPassword
+                v1SigningEnabled true
+                v2SigningEnabled true
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
-            minifyEnabled false
+            if (releaseKeystore && releaseStorePassword && releaseKeyPassword) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -46,4 +53,6 @@ dependencies {
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
     implementation 'androidx.core:core:1.12.0'
     implementation 'androidx.biometric:biometric:1.2.0-alpha05'
+    testImplementation 'junit:junit:4.13.2'
 }
+

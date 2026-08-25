@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.finance.dashboard">
 
@@ -20,6 +20,7 @@
 
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="false"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@drawable/ic_launcher"
@@ -74,3 +75,4 @@
     </application>
 
 </manifest>
+

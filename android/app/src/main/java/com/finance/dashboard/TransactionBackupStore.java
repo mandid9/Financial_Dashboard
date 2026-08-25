@@ -1,9 +1,10 @@
-package com.finance.dashboard;
+﻿package com.finance.dashboard;
 
+import android.content.ContentValues;
 import android.content.Context;
-import android.content.SharedPreferences;
-import android.os.Handler;
-import android.os.Looper;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -14,117 +15,174 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
-public class TransactionBackupStore {
-
-    private static final String PREF_NAME = "finance_tx_backup";
-    private static final String KEY_TRANSACTIONS = "saved_transactions";
+public final class TransactionBackupStore {
     private static final String TAG = "TxBackupStore";
+    private static final String DB_NAME = "finance_transactions.db";
+    private static final int DB_VERSION = 1;
+    private static final String TABLE = "offline_transactions";
+    private static final Object LOCK = new Object();
 
-    public static void saveTransaction(Context context, String rawMessage, double amount, String merchant, String kind, String category, String status) {
+    private static final class Helper extends SQLiteOpenHelper {
+        Helper(Context context) { super(context.getApplicationContext(), DB_NAME, null, DB_VERSION); }
+        @Override public void onCreate(SQLiteDatabase db) {
+            db.execSQL("CREATE TABLE " + TABLE + " (" +
+                    "id INTEGER PRIMARY KEY, raw_message TEXT NOT NULL, amount REAL NOT NULL, " +
+                    "merchant TEXT, kind TEXT NOT NULL, category TEXT, status TEXT NOT NULL, " +
+                    "created_at INTEGER NOT NULL)");
+            db.execSQL("CREATE INDEX idx_offline_status ON " + TABLE + "(status)");
+        }
+        @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) { }
+    }
+
+    private static void migrateLegacy(Context context, SQLiteDatabase db) {
+        android.content.SharedPreferences prefs = context.getSharedPreferences("finance_tx_backup", Context.MODE_PRIVATE);
+        String legacy = prefs.getString("saved_transactions", "");
+        if (legacy == null || legacy.isEmpty()) return;
         try {
-            SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-            String existingJson = prefs.getString(KEY_TRANSACTIONS, "[]");
-            JSONArray arr = new JSONArray(existingJson);
-
-            JSONObject tx = new JSONObject();
-            tx.put("id", System.currentTimeMillis());
-            tx.put("raw_message", rawMessage);
-            tx.put("amount", amount);
-            tx.put("merchant", merchant != null ? merchant : "");
-            tx.put("kind", kind != null ? kind : "outgoing");
-            tx.put("category", category != null ? category : "");
-            tx.put("status", status); // "pending", "synced", "failed"
-            tx.put("created_at", System.currentTimeMillis());
-
-            arr.put(tx);
-            prefs.edit().putString(KEY_TRANSACTIONS, arr.toString()).apply();
-            Log.d(TAG, "Transaction saved locally: " + amount + " EGP (" + status + ")");
-        } catch (Exception e) {
-            Log.e(TAG, "Error saving backup transaction", e);
+            JSONArray rows = new JSONArray(legacy);
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject row = rows.getJSONObject(i);
+                ContentValues values = new ContentValues();
+                values.put("id", row.optLong("id", System.currentTimeMillis() + i));
+                values.put("raw_message", row.optString("raw_message", ""));
+                values.put("amount", row.optDouble("amount", 0));
+                values.put("merchant", row.optString("merchant", ""));
+                values.put("kind", row.optString("kind", "outgoing"));
+                values.put("category", row.optString("category", ""));
+                values.put("status", row.optString("status", "pending"));
+                values.put("created_at", row.optLong("created_at", System.currentTimeMillis()));
+                db.insertWithOnConflict(TABLE, null, values, SQLiteDatabase.CONFLICT_IGNORE);
+            }
+            prefs.edit().remove("saved_transactions").apply();
+        } catch (Exception error) {
+            Log.e(TAG, "Legacy queue migration failed", error);
+        }
+    }
+    public static long saveTransaction(Context context, String rawMessage, double amount, String merchant,
+                                       String kind, String category, String status) {
+        synchronized (LOCK) {
+            Helper helper = new Helper(context);
+            SQLiteDatabase db = helper.getWritableDatabase();
+            migrateLegacy(context, db);
+            long id = System.currentTimeMillis();
+            ContentValues values = new ContentValues();
+            values.put("id", id);
+            values.put("raw_message", rawMessage == null ? "" : rawMessage);
+            values.put("amount", amount);
+            values.put("merchant", merchant == null ? "" : merchant);
+            values.put("kind", kind == null ? "outgoing" : kind);
+            values.put("category", category == null ? "" : category);
+            values.put("status", status == null ? "pending" : status);
+            values.put("created_at", id);
+            db.insertOrThrow(TABLE, null, values);
+            helper.close();
+            return id;
         }
     }
 
     public static void markSynced(Context context, String rawMessage) {
-        try {
-            SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-            String existingJson = prefs.getString(KEY_TRANSACTIONS, "[]");
-            JSONArray arr = new JSONArray(existingJson);
+        markStatus(context, rawMessage, "synced");
+    }
 
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject tx = arr.getJSONObject(i);
-                if (rawMessage.equals(tx.optString("raw_message"))) {
-                    tx.put("status", "synced");
-                }
-            }
-            prefs.edit().putString(KEY_TRANSACTIONS, arr.toString()).apply();
-        } catch (Exception e) {
-            Log.e(TAG, "Error marking transaction as synced", e);
+    public static void markStatus(Context context, String rawMessage, String status) {
+        synchronized (LOCK) {
+            Helper helper = new Helper(context);
+            SQLiteDatabase db = helper.getWritableDatabase();
+            migrateLegacy(context, db);
+            ContentValues values = new ContentValues();
+            values.put("status", status);
+            db.update(TABLE, values, "raw_message = ?", new String[]{rawMessage});
+            helper.close();
+        }
+    }
+
+    public static void markStatusById(Context context, long id, String status) {
+        if (id < 0) return;
+        synchronized (LOCK) {
+            Helper helper = new Helper(context);
+            ContentValues values = new ContentValues();
+            values.put("status", status);
+            helper.getWritableDatabase().update(TABLE, values, "id = ?", new String[]{String.valueOf(id)});
+            helper.close();
         }
     }
 
     public static void syncPendingTransactions(Context context) {
         new Thread(() -> {
+            Helper helper = new Helper(context);
+            migrateLegacy(context, helper.getWritableDatabase());
             try {
-                SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-                String existingJson = prefs.getString(KEY_TRANSACTIONS, "[]");
-                JSONArray arr = new JSONArray(existingJson);
-
-                SharedPreferences financePrefs = context.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
-                String webhookUrl = financePrefs.getString("webhook_url", NotificationActionReceiver.DEFAULT_WEBHOOK_URL);
-                String webhookToken = financePrefs.getString("webhook_token", "");
-
-                String endpoint = webhookUrl;
-                if (!webhookToken.isEmpty()) {
-                    endpoint += (endpoint.contains("?") ? "&" : "?") + "key=" + webhookToken;
+                String webhookUrl = context.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE)
+                        .getString("webhook_url", NotificationActionReceiver.DEFAULT_WEBHOOK_URL);
+                String webhookToken = context.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE)
+                        .getString("webhook_token", "");
+                Cursor cursor;
+                synchronized (LOCK) {
+                    cursor = helper.getReadableDatabase().query(TABLE,
+                            new String[]{"id", "raw_message", "category"},
+                            "status IN (?, ?)", new String[]{"pending", "failed"}, null, null,
+                            "created_at ASC");
                 }
-
-                boolean updated = false;
-
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject tx = arr.getJSONObject(i);
-                    String status = tx.optString("status");
-                    if ("pending".equals(status) || "failed".equals(status)) {
-                        String msg = tx.optString("raw_message");
-                        String cat = tx.optString("category");
-
-                        URL url = new URL(endpoint);
+                while (cursor.moveToNext()) {
+                    long id = cursor.getLong(0);
+                    String message = cursor.getString(1);
+                    String category = cursor.getString(2);
+                    try {
+                        URL url = new URL(webhookUrl);
                         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                        if (!webhookToken.isEmpty()) conn.setRequestProperty("x-webhook-token", webhookToken);
                         conn.setRequestMethod("POST");
                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                         conn.setConnectTimeout(8000);
                         conn.setReadTimeout(8000);
                         conn.setDoOutput(true);
-
                         JSONObject payload = new JSONObject();
-                        payload.put("message", msg);
-                        if (!cat.isEmpty()) payload.put("category", cat);
-
-                        try (OutputStream os = conn.getOutputStream()) {
-                            os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+                        payload.put("message", message);
+                        payload.put("idempotency_key", String.valueOf(id));
+                        if (category != null && !category.isEmpty()) payload.put("category", category);
+                        try (OutputStream output = conn.getOutputStream()) {
+                            output.write(payload.toString().getBytes(StandardCharsets.UTF_8));
                         }
-
                         int code = conn.getResponseCode();
                         conn.disconnect();
-
-                        if (code >= 200 && code < 300) {
-                            tx.put("status", "synced");
-                            updated = true;
-                            Log.i(TAG, "Successfully synced pending transaction: " + msg);
-                        }
+                        markStatusById(context, id, code >= 200 && code < 300 ? "synced" : "failed");
+                    } catch (Exception error) {
+                        markStatusById(context, id, "failed");
+                        Log.w(TAG, "Offline transaction retry failed", error);
                     }
                 }
-
-                if (updated) {
-                    prefs.edit().putString(KEY_TRANSACTIONS, arr.toString()).apply();
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "Sync pending warning: " + e.getMessage());
+                cursor.close();
+            } finally {
+                helper.close();
             }
         }).start();
     }
 
     public static String getSavedTransactionsJson(Context context) {
-        SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        return prefs.getString(KEY_TRANSACTIONS, "[]");
+        JSONArray result = new JSONArray();
+        Helper helper = new Helper(context);
+        migrateLegacy(context, helper.getWritableDatabase());
+        Cursor cursor = helper.getReadableDatabase().query(TABLE, null, null, null, null, null, "created_at ASC");
+        try {
+            while (cursor.moveToNext()) {
+                JSONObject tx = new JSONObject();
+                tx.put("id", cursor.getLong(cursor.getColumnIndexOrThrow("id")));
+                tx.put("raw_message", cursor.getString(cursor.getColumnIndexOrThrow("raw_message")));
+                tx.put("amount", cursor.getDouble(cursor.getColumnIndexOrThrow("amount")));
+                tx.put("merchant", cursor.getString(cursor.getColumnIndexOrThrow("merchant")));
+                tx.put("kind", cursor.getString(cursor.getColumnIndexOrThrow("kind")));
+                tx.put("category", cursor.getString(cursor.getColumnIndexOrThrow("category")));
+                tx.put("status", cursor.getString(cursor.getColumnIndexOrThrow("status")));
+                tx.put("created_at", cursor.getLong(cursor.getColumnIndexOrThrow("created_at")));
+                result.put(tx);
+            }
+        } catch (Exception error) {
+            Log.e(TAG, "Could not read offline transactions", error);
+        } finally {
+            cursor.close();
+            helper.close();
+        }
+        return result.toString();
     }
 }
+

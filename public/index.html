@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -3605,7 +3605,8 @@ function saveCustomSmsRule() {
     name: keyword,
     keyword: keyword,
     category: category,
-    created_at: new Date().toISOString()
+     categoryId: category,
+     created_at: new Date().toISOString()
   };
 
   rules.push(newRule);
@@ -3708,3 +3709,4 @@ window.onload = async () => {
 </script>
 </body>
 </html>
+
