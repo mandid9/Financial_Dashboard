@@ -1097,8 +1097,6 @@
         <input id="hub-rule-sender" list="hub-senders-datalist" type="text" placeholder="Or enter a custom sender ID" style="width:100%; font-size:12px; padding:8px; margin-bottom:10px" oninput="onSenderInputChanged(this.value)">
         <datalist id="hub-senders-datalist"></datalist>
         <div id="hub-sender-fuzzy-hint" style="font-size:11px; color:var(--primary); margin-top:-6px; margin-bottom:8px; display:none"></div>
-        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:3px">Manual category</label>
-        <select id="hub-rule-category" style="width:100%; font-size:12px; padding:8px; margin-bottom:10px"></select>
         <button class="primary" style="width:100%" onclick="saveCustomSmsRule()">Save sender rule</button>
         <button class="alt" style="width:100%; margin-top:6px; display:none" id="hub-rule-cancel-edit" onclick="cancelSmsRuleEdit()">Cancel edit</button>
       </div>
@@ -1113,7 +1111,6 @@
           <button class="primary" style="flex:1" onclick="syncOfflineTransactionsFromUI()">🔄 Sync Offline SMS</button>
           <button class="alt" style="flex:1" onclick="triggerNativeTestFromHub()">🔔 Test Alert</button>
         </div>
-        <button class="alt" style="width:100%; font-size:12px; padding:8px" onclick="copyWebhookUrl()">📋 Copy Personal Webhook URL</button>
       </div>
     </div>
 
@@ -3004,7 +3001,7 @@ async function initPushNotifications() {
     return;
   }
 
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     updatePushUI('unsupported');
     return;
   }
@@ -3143,6 +3140,11 @@ async function togglePushNotifications() {
     }
   } else {
     try {
+      if (!('Notification' in window) || typeof Notification.requestPermission !== 'function') {
+        toast('Browser notifications are unavailable here. Use the Android app notification controls.', 'error');
+        updatePushUI('unsupported');
+        return;
+      }
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') {
         toast('Notification permission denied', 'error');
@@ -3363,7 +3365,6 @@ function normalizeSender(s) {
 
 function normalizeSmsRule(rule) {
   const categories = (state.budget && state.budget.categories) || [];
-  const categoryId = rule.categoryId || rule.default_category_id || '';
   const category = rule.category || (categories.find(c => c.id === categoryId) || {}).name || '';
   return {
     id: rule.id || rule.ruleId || '',
@@ -3471,10 +3472,9 @@ function clearSmsRuleForm() {
 function cancelSmsRuleEdit() { clearSmsRuleForm(); }
 async function saveCustomSmsRule() {
   const sender = document.getElementById('hub-rule-sender')?.value.trim() || '';
-  const categoryId = document.getElementById('hub-rule-category')?.value || null;
   if (!sender) { toast('Choose or enter a sender first', 'error'); return; }
   const editingId = state.smsRuleEditingId;
-  const rule = { name: sender, senderPattern: sender, contentPattern: '', matchType: 'contains', direction: 'auto', catchMode: 'catch', confirmationMode: 'confirm', categoryId, isActive: true, priority: 100 };
+  const rule = { name: sender, senderPattern: sender, contentPattern: '', matchType: 'contains', direction: 'auto', catchMode: 'catch', confirmationMode: 'confirm', isActive: true, priority: 100 };
   try {
     const response = await fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: editingId ? 'updateSmsRule' : 'addSmsRule', args: editingId ? [editingId, rule] : [rule] }) });
     const result = await response.json().catch(() => ({}));
@@ -3487,7 +3487,6 @@ async function saveCustomSmsRule() {
 function editCustomSmsRule(ruleId) {
   const rule = getStoredCustomRules().find(item => item.id === ruleId); if (!rule) return;
   document.getElementById('hub-rule-sender').value = rule.senderPattern || '';
-  document.getElementById('hub-rule-category').value = rule.categoryId || '';
   document.getElementById('hub-detected-sender-select').value = rule.senderPattern || '';
   state.smsRuleEditingId = rule.id;
   const cancel = document.getElementById('hub-rule-cancel-edit'); if (cancel) cancel.style.display = 'block';
@@ -3513,7 +3512,6 @@ function renderCustomSmsRulesList() {
   const container = document.getElementById('hub-custom-rules-container'); if (!container) return;
   const rules = getStoredCustomRules();
   if (!rules.length) { container.innerHTML = '<small style="color:var(--text-muted);display:block;text-align:center;padding:8px">No sender rules saved yet.</small>'; return; }
-  container.innerHTML = '<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px">' + rules.filter(r => r.isActive).length + ' active of ' + rules.length + ' sender rules</div>' + '<div style="display:flex;flex-direction:column;gap:6px">' + rules.map(rule => '<div style="background:rgba(15,23,42,0.6);padding:10px 12px;border-radius:10px;border:1px solid var(--surface-border)"><div style="display:flex;justify-content:space-between;gap:8px"><strong style="font-size:12px">' + esc(rule.senderPattern) + '</strong><span style="font-size:10px;color:' + (rule.isActive ? '#4ade80' : '#94a3b8') + '">' + (rule.isActive ? 'ACTIVE' : 'PAUSED') + '</span></div><div style="font-size:11px;color:var(--text-muted);margin-top:4px">Category: ' + esc(rule.category || 'Uncategorized') + '</div><div style="display:flex;gap:6px;margin-top:8px"><button class="alt" data-id="' + esc(rule.id) + '" onclick="editCustomSmsRule(this.dataset.id)">Edit</button><button class="alt" data-id="' + esc(rule.id) + '" onclick="toggleSmsRule(this.dataset.id)">' + (rule.isActive ? 'Pause' : 'Enable') + '</button><button class="alt" data-id="' + esc(rule.id) + '" onclick="deleteCustomSmsRule(this.dataset.id)">Delete</button></div></div>').join('') + '</div>';
 }
 function triggerNativeTestFromHub() {
   if (window.AndroidApp && typeof window.AndroidApp.sendNativeTestNotification === 'function') {
@@ -3521,16 +3519,6 @@ function triggerNativeTestFromHub() {
   } else {
     sendTestPush();
   }
-}
-
-function copyWebhookUrl() {
-  const token = window.AndroidApp && typeof window.AndroidApp.getWebhookToken === 'function' ? window.AndroidApp.getWebhookToken() : '';
-  const url = `${window.location.origin}/api/webhook${token ? '?key=' + token : ''}`;
-  navigator.clipboard.writeText(url).then(() => {
-    toast('📋 Webhook URL copied to clipboard!', 'success');
-  }).catch(() => {
-    toast(url, 'info');
-  });
 }
 
 // Kickoff
