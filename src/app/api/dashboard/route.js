@@ -1,4 +1,4 @@
-export const dynamic = 'force-dynamic';
+﻿export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { supabase } from '@/lib/supabase';
@@ -106,6 +106,9 @@ export async function GET(req) {
 
     let { data: categories, error: catError } = await catQuery;
     if (catError) throw catError;
+
+    let { data: smsRules, error: smsRulesError } = await supabase.from('user_sms_rules').select('*').eq('user_id', user.id).order('priority', { ascending: true }).order('created_at', { ascending: true });
+    if (smsRulesError) { console.warn('SMS rules retrieval warning:', smsRulesError.message); smsRules = []; }
 
     // Auto-provision initial categories for new accounts
     if (!categories || categories.length === 0) {
@@ -470,7 +473,8 @@ export async function GET(req) {
         },
         categories: returnCategories
       },
-      webhookToken: userWebhookToken
+      webhookToken: userWebhookToken,
+      smsRules: smsRules || []
     }, {
       headers: {
         'Cache-Control': 'private, no-cache, no-store, must-revalidate'

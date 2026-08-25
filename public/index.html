@@ -1084,52 +1084,48 @@
       </div>
     </div>
 
-    <!-- 3. CUSTOM BANK SENDERS & SMART SMS PARSER -->
+    <!-- 3. SMS RULES: SENDER -> SAMPLE -> ACTION -->
     <div style="margin-bottom:16px;">
-      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">🏦 Custom Bank Senders & SMS Rules</h3>
-      
-      <!-- Detected Senders Dropdown & Suggestions -->
-      <div class="card hub-card" style="padding:12px; margin-bottom:12px;">
-        <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:700">📋 Choose From Detected SMS Senders:</label>
-        <select id="hub-detected-sender-select" onchange="onSenderDropdownSelected(this.value)" style="width:100%; font-size:13px; padding:8px 10px; margin-bottom:8px">
-          <option value="">-- Select from Detected Bank Senders / Wallets --</option>
-        </select>
-        
-        <strong style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); display:block; margin-bottom:6px">⚡ Or Tap Quick Chips:</strong>
-        <div id="hub-suggested-senders" style="display:flex; flex-wrap:wrap; gap:6px;">
-          <!-- Dynamically populated -->
-        </div>
-      </div>
-
-      <!-- Live SMS Rule Tester & Custom Rule Creator -->
+      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">🏦 SMS Catch Rules</h3>
       <div class="card hub-card" style="padding:14px; border:1px solid rgba(99,102,241,0.3)">
-        <strong style="font-size:13px; display:block; margin-bottom:4px">🧪 Visual SMS Rule & Bank Sender Builder</strong>
-        <small style="color:var(--text-muted); display:block; margin-bottom:10px; font-size:12px">Add custom bank sender names (fuzzy, case-insensitive) or test against any sample SMS.</small>
-        
-        <textarea id="hub-sms-input" rows="3" placeholder="Paste sample bank SMS here... e.g. Paid EGP 350.00 at Gourmet via WE Pay" style="width:100%; font-size:12px; margin-bottom:8px; border-radius:8px; padding:8px;" oninput="testCustomSmsRule()"></textarea>
-        
-        <!-- Live Detection Output -->
+        <strong style="font-size:13px; display:block; margin-bottom:4px">Create a controlled SMS rule</strong>
+        <small style="color:var(--text-muted); display:block; margin-bottom:12px; font-size:12px">Choose the sender, prove the match with a real SMS, then decide exactly what the app should catch.</small>
+
+        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:3px">1. Sender ID / bank origin</label>
+        <select id="hub-detected-sender-select" onchange="onSenderDropdownSelected(this.value)" style="width:100%; font-size:13px; padding:8px 10px; margin-bottom:6px">
+          <option value="">-- Choose a known sender --</option>
+        </select>
+        <input id="hub-rule-sender" list="hub-senders-datalist" type="text" placeholder="e.g. CIB, FABMISR, Vodafone Cash" style="width:100%; font-size:12px; padding:8px; margin-bottom:10px" oninput="onSenderInputChanged(this.value)">
+        <datalist id="hub-senders-datalist"></datalist>
+        <div id="hub-sender-fuzzy-hint" style="font-size:11px; color:var(--primary); margin-top:-6px; margin-bottom:8px; display:none"></div>
+
+        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:3px">2. Sample SMS and content match</label>
+        <textarea id="hub-sms-input" rows="3" placeholder="Paste the complete SMS here..." style="width:100%; font-size:12px; margin-bottom:6px; border-radius:8px; padding:8px;" oninput="testCustomSmsRule()"></textarea>
+        <input id="hub-rule-content" type="text" placeholder="Required content phrase (optional if sender-only)" style="width:100%; font-size:12px; padding:8px; margin-bottom:8px" oninput="testCustomSmsRule()">
+
         <div id="hub-sms-preview" style="background:var(--surface-hover); padding:10px 12px; border-radius:8px; font-size:12px; margin-bottom:10px; border:1px dashed var(--surface-border)">
-          <div style="color:var(--text-muted); font-size:11px">Live Detection Preview:</div>
-          <div id="hub-preview-result" style="margin-top:4px; font-weight:600; color:var(--primary)">Paste an SMS above to preview...</div>
+          <div style="color:var(--text-muted); font-size:11px">Live detection preview</div>
+          <div id="hub-preview-result" style="margin-top:4px; font-weight:600; color:var(--primary)">Paste a sample SMS above...</div>
         </div>
 
-        <div style="display:flex; gap:8px; margin-bottom:8px">
-          <div style="flex:1">
-            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px">Bank Sender / Keyword</label>
-            <input id="hub-rule-keyword" list="hub-senders-datalist" type="text" placeholder="e.g. WE Pay, FAB, Fawry" style="width:100%; font-size:12px; padding:8px;" oninput="onSenderInputChanged(this.value)">
-            <datalist id="hub-senders-datalist"></datalist>
-            <div id="hub-sender-fuzzy-hint" style="font-size:11px; color:var(--primary); margin-top:4px; display:none"></div>
-          </div>
-          <div style="flex:1">
-            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px">Default Category</label>
-            <select id="hub-rule-category" style="width:100%; font-size:12px; padding:8px;"></select>
-          </div>
+        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:3px">3. What to catch</label>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:8px">
+          <select id="hub-rule-direction" style="width:100%; font-size:12px; padding:8px" aria-label="Transaction direction">
+            <option value="auto">Auto direction</option><option value="outgoing">Expense</option><option value="incoming">Income</option><option value="refund">Refund</option>
+          </select>
+          <select id="hub-rule-catch-mode" style="width:100%; font-size:12px; padding:8px" aria-label="Catch mode">
+            <option value="catch">Catch transaction</option><option value="ignore">Ignore matching SMS</option>
+          </select>
+          <select id="hub-rule-confirmation" style="width:100%; font-size:12px; padding:8px" aria-label="Confirmation mode">
+            <option value="confirm">Ask confirmation</option><option value="auto">Auto-log</option>
+          </select>
         </div>
-        <button class="primary" style="width:100%" onclick="saveCustomSmsRule()">💾 Save Custom Bank Sender / Rule</button>
+        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:3px">Default category</label>
+        <select id="hub-rule-category" style="width:100%; font-size:12px; padding:8px; margin-bottom:10px"></select>
+
+        <button class="primary" style="width:100%" onclick="saveCustomSmsRule()">💾 Save SMS rule</button>
+        <button class="alt" style="width:100%; margin-top:6px; display:none" id="hub-rule-cancel-edit" onclick="cancelSmsRuleEdit()">Cancel edit</button>
       </div>
-
-      <!-- Active Custom Rules -->
       <div id="hub-custom-rules-container" style="margin-top:10px"></div>
     </div>
 
@@ -1318,7 +1314,10 @@ const state = {
   splitOriginal: 0,
   carryItems: JSON.parse(sessionStorage.getItem('carryItems') || '[]'),
   pendingCarry: null,
-  isLoading: false
+  isLoading: false,
+  smsRules: [],
+  smsRulesLoaded: false,
+  smsRuleEditingId: null
 };
 
 // --- 10. UTILITIES ---
@@ -1540,6 +1539,13 @@ async function loadData(silent = false) {
     state.dashboard = data.dashboard;
     state.historyAppend = false;
     state.budget = data.budget;
+    if (Array.isArray(data.smsRules)) {
+      state.smsRules = data.smsRules.map(normalizeSmsRule);
+      state.smsRulesLoaded = true;
+      localStorage.setItem('custom_sms_rules', JSON.stringify(state.smsRules));
+      syncCustomRulesToAndroid();
+      renderCustomSmsRulesList();
+    }
 
     // Cache latest state for instant 0ms startup
     if (state.cycleOffset === 0 && !state.historyFilter && !state.historySearch) {
@@ -3376,40 +3382,72 @@ function updatePrivacyUI(isPrivacy) {
 
 // --- 12. USER HUB & SMART FUZZY BANK SMS PARSER ---
 function normalizeSender(s) {
-  return (s || '').toLowerCase().replace(/[\s\-_.,/\\#&@]/g, '');
+  return String(s || '').toLowerCase().replaceAll(' ', '').replaceAll('-', '').replaceAll('_', '').replaceAll('.', '').replaceAll('/', '').replaceAll('#', '').replaceAll('&', '').replaceAll('@', '');
+}
+
+function normalizeSmsRule(rule) {
+  const categories = (state.budget && state.budget.categories) || [];
+  const categoryId = rule.categoryId || rule.default_category_id || '';
+  const category = rule.category || (categories.find(c => c.id === categoryId) || {}).name || '';
+  return {
+    id: rule.id || rule.ruleId || '',
+    name: rule.name || rule.pattern_name || rule.senderPattern || rule.contains_keyword || 'SMS rule',
+    senderPattern: rule.senderPattern || rule.sender_pattern || '',
+    contentPattern: rule.contentPattern || rule.content_pattern || rule.keyword || rule.contains_keyword || '',
+    matchType: rule.matchType || rule.match_type || 'contains',
+    direction: rule.direction || 'auto',
+    catchMode: rule.catchMode || rule.catch_mode || 'catch',
+    amountPattern: rule.amountPattern || rule.amount_pattern || '',
+    merchantPattern: rule.merchantPattern || rule.merchant_pattern || '',
+    confirmationMode: rule.confirmationMode || rule.confirmation_mode || 'confirm',
+    categoryId,
+    category,
+    isActive: rule.isActive !== undefined ? !!rule.isActive : rule.is_active !== false,
+    priority: Number(rule.priority) || 100,
+    matchCount: Number(rule.matchCount || rule.match_count) || 0,
+    lastMatchedAt: rule.lastMatchedAt || rule.last_matched_at || null
+  };
+}
+
+function getStoredCustomRules() {
+  if (state.smsRulesLoaded) return state.smsRules;
+  try {
+    return JSON.parse(localStorage.getItem('custom_sms_rules') || '[]').map(normalizeSmsRule);
+  } catch (e) {
+    return [];
+  }
+}
+
+function syncCustomRulesToAndroid() {
+  if (!window.AndroidApp || typeof window.AndroidApp.syncCustomSmsRules !== 'function') return;
+  const rules = getStoredCustomRules().map(r => ({
+    id: r.id,
+    name: r.name,
+    keyword: r.contentPattern || r.senderPattern,
+    senderPattern: r.senderPattern,
+    contentPattern: r.contentPattern,
+    matchType: r.matchType,
+    direction: r.direction,
+    catchMode: r.catchMode,
+    category: r.categoryId || r.category,
+    confirmationMode: r.confirmationMode,
+    isActive: r.isActive
+  }));
+  window.AndroidApp.syncCustomSmsRules(JSON.stringify(rules));
+}
+
+function persistRulesLocally(rules) {
+  state.smsRules = rules.map(normalizeSmsRule);
+  localStorage.setItem('custom_sms_rules', JSON.stringify(state.smsRules));
+  syncCustomRulesToAndroid();
 }
 
 function openUserHubModal() {
   const modal = document.getElementById('modal-user-hub');
   if (!modal) return;
-
-  // Set user email and avatar letter
-  const emailEl = document.getElementById('hub-user-email');
-  const avatarLetterEl = document.getElementById('hub-avatar-initial');
-  const topAvatarInitial = document.getElementById('user-avatar-initial');
-  
-  if (state.user && state.user.email) {
-    if (emailEl) emailEl.textContent = state.user.email;
-    const initial = state.user.email.charAt(0).toUpperCase();
-    if (avatarLetterEl) avatarLetterEl.textContent = initial;
-    if (topAvatarInitial) topAvatarInitial.textContent = initial;
-  }
-
-  // Populate category dropdown
-  const catSelect = document.getElementById('hub-rule-category');
-  if (catSelect && state.budget && Array.isArray(state.budget.categories)) {
-    catSelect.innerHTML = state.budget.categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
-  }
-
-  // Sync Biometric Badge in Hub
   updateBiometricUI();
-
-  // Populate dynamic suggested senders from history
   populateSuggestedSendersFromHistory();
-
-  // Render Custom Rules List
   renderCustomSmsRulesList();
-
   openModal('modal-user-hub');
 }
 
@@ -3417,265 +3455,227 @@ function populateSuggestedSendersFromHistory() {
   const container = document.getElementById('hub-suggested-senders');
   const selectEl = document.getElementById('hub-detected-sender-select');
   const datalistEl = document.getElementById('hub-senders-datalist');
-
-  const detectedSenders = new Map();
-  // Standard Egyptian Banks & Wallets with standard punctuation
-  detectedSenders.set('WE Pay', { name: 'WE Pay', category: 'Utilities' });
-  detectedSenders.set('FABMISR', { name: 'FABMISR', category: 'Uncategorized' });
-  detectedSenders.set('Fawry', { name: 'Fawry', category: 'Bills' });
-  detectedSenders.set('Vodafone Cash', { name: 'Vodafone Cash', category: 'Wallet' });
-  detectedSenders.set('InstaPay', { name: 'InstaPay', category: 'Transfers' });
-  detectedSenders.set('CIB', { name: 'CIB', category: 'Uncategorized' });
-  detectedSenders.set('Banque Misr', { name: 'Banque Misr', category: 'Uncategorized' });
-  detectedSenders.set('NBE', { name: 'NBE', category: 'Uncategorized' });
-  detectedSenders.set('QNB AlAhli', { name: 'QNB AlAhli', category: 'Uncategorized' });
-  detectedSenders.set('Etisalat Cash', { name: 'Etisalat Cash', category: 'Wallet' });
-  detectedSenders.set('Orange Cash', { name: 'Orange Cash', category: 'Wallet' });
-
-  // Extract from loaded transaction history (both outgoing and incoming)
-  if (state.dashboard) {
-    const allTx = [...(state.dashboard.outgoing || []), ...(state.dashboard.incoming || [])];
-    allTx.forEach(t => {
-      const src = (t.source || '').trim();
-      if (src && src.length > 1 && !detectedSenders.has(src)) {
-        detectedSenders.set(src, { name: src, category: t.category || 'Uncategorized' });
-      }
-    });
-  }
-
-  // Extract from stored custom rules
-  const storedRules = getStoredCustomRules();
-  storedRules.forEach(r => {
-    if (r.name && !detectedSenders.has(r.name)) {
-      detectedSenders.set(r.name, { name: r.name, category: r.category || 'Uncategorized' });
-    }
+  const senders = new Map();
+  [
+    ['CIB', ''], ['NBE', ''], ['Banque Misr', ''], ['QNB AlAhli', ''],
+    ['FABMISR', ''], ['InstaPay', ''], ['Fawry', ''], ['Vodafone Cash', ''],
+    ['WE Pay', ''], ['Etisalat Cash', ''], ['Orange Cash', '']
+  ].forEach(item => senders.set(item[0], item[1]));
+  getStoredCustomRules().forEach(rule => {
+    if (rule.senderPattern) senders.set(rule.senderPattern, rule.category);
   });
-
-  const sendersList = Array.from(detectedSenders.values());
-
-  // 1. Populate Dropdown Selector
+  const list = Array.from(senders.entries());
   if (selectEl) {
-    selectEl.innerHTML = '<option value="">-- Select from Detected Bank Senders / Wallets --</option>' + 
-      sendersList.map(s => `<option value="${esc(s.name)}" data-cat="${esc(s.category)}">${esc(s.name)}${s.category ? ' (' + esc(s.category) + ')' : ''}</option>`).join('');
+    selectEl.innerHTML = '<option value="">-- Choose a known sender --</option>' +
+      list.map(item => '<option value="' + esc(item[0]) + '">' + esc(item[0]) + '</option>').join('');
   }
-
-  // 2. Populate Datalist for autocomplete
-  if (datalistEl) {
-    datalistEl.innerHTML = sendersList.map(s => `<option value="${esc(s.name)}"></option>`).join('');
-  }
-
-  // 3. Populate Quick Chips
+  if (datalistEl) datalistEl.innerHTML = list.map(item => '<option value="' + esc(item[0]) + '"></option>').join('');
   if (container) {
-    const chipsHtml = sendersList.slice(0, 12).map(s => {
-      const escName = esc(s.name).replace(/'/g, "\\'");
-      const escCat = esc(s.category).replace(/'/g, "\\'");
-      return `<span class="chip" style="cursor:pointer" onclick="selectSuggestedSender('${escName}', '${escCat}')">+ ${esc(s.name)}</span>`;
-    }).join('');
-    container.innerHTML = chipsHtml;
+    container.innerHTML = list.slice(0, 8).map(item =>
+      '<button type="button" class="chip" data-sender="' + esc(item[0]) +
+      '" data-category="' + esc(item[1]) +
+      '" onclick="selectSuggestedSender(this.dataset.sender, this.dataset.category)">+ ' +
+      esc(item[0]) + '</button>'
+    ).join('');
   }
 }
 
-function onSenderDropdownSelected(selectedSenderName) {
-  if (!selectedSenderName) return;
-  const selectEl = document.getElementById('hub-detected-sender-select');
-  let category = '';
-  if (selectEl) {
-    const opt = selectEl.options[selectEl.selectedIndex];
-    if (opt) category = opt.getAttribute('data-cat') || '';
-  }
-  selectSuggestedSender(selectedSenderName, category);
+function onSenderDropdownSelected(value) {
+  if (value) selectSuggestedSender(value, '');
 }
 
 function selectSuggestedSender(name, category) {
-  const keywordInput = document.getElementById('hub-rule-keyword');
-  const catSelect = document.getElementById('hub-rule-category');
+  const sender = document.getElementById('hub-rule-sender');
+  const categoryEl = document.getElementById('hub-rule-category');
   const selectEl = document.getElementById('hub-detected-sender-select');
-  
-  if (keywordInput) keywordInput.value = name;
+  if (sender) sender.value = name;
   if (selectEl) selectEl.value = name;
-  if (catSelect && category) {
-    catSelect.value = category;
-  }
+  if (categoryEl && category) categoryEl.value = category;
   onSenderInputChanged(name);
   testCustomSmsRule();
 }
 
-function onSenderInputChanged(val) {
-  const hintEl = document.getElementById('hub-sender-fuzzy-hint');
-  if (!hintEl) return;
-
-  const raw = (val || '').trim();
-  if (!raw) {
-    hintEl.style.display = 'none';
-    return;
-  }
-
-  const normInput = normalizeSender(raw);
-  const knownSenders = [
-    'WE Pay', 'FABMISR', 'Fawry', 'Vodafone Cash', 'InstaPay', 
-    'CIB', 'Banque Misr', 'NBE', 'QNB AlAhli', 'Etisalat Cash', 'Orange Cash'
-  ];
-
-  const matched = knownSenders.find(k => normalizeSender(k) === normInput || (normInput.length >= 3 && normalizeSender(k).includes(normInput)));
-  if (matched && matched !== raw) {
-    hintEl.style.display = 'block';
-    hintEl.innerHTML = `💡 Exact sender captured in SMS: <strong style="cursor:pointer; text-decoration:underline" onclick="selectSuggestedSender('${matched}', '')">${matched}</strong> (tap to apply)`;
+function onSenderInputChanged(value) {
+  const hint = document.getElementById('hub-sender-fuzzy-hint');
+  if (!hint) return;
+  const input = normalizeSender(value);
+  const known = ['CIB', 'NBE', 'Banque Misr', 'QNB AlAhli', 'FABMISR', 'InstaPay', 'Fawry', 'Vodafone Cash', 'WE Pay'];
+  const match = known.find(item => normalizeSender(item) === input || (input.length >= 3 && normalizeSender(item).includes(input)));
+  if (match && match !== value) {
+    hint.style.display = 'block';
+    hint.textContent = 'Suggested sender: ' + match + ' (click to use)';
+    hint.onclick = () => selectSuggestedSender(match, '');
   } else {
-    hintEl.style.display = 'none';
+    hint.style.display = 'none';
   }
 }
 
 function testCustomSmsRule() {
-  const input = document.getElementById('hub-sms-input');
+  const sampleEl = document.getElementById('hub-sms-input');
+  const contentEl = document.getElementById('hub-rule-content');
+  const senderEl = document.getElementById('hub-rule-sender');
   const preview = document.getElementById('hub-preview-result');
-  const keywordInput = document.getElementById('hub-rule-keyword');
-  if (!input || !preview) return;
-
-  const text = input.value.trim();
-  if (!text) {
-    preview.textContent = 'Paste an SMS above to preview...';
-    preview.style.color = '#818cf8';
+  if (!sampleEl || !contentEl || !preview) return;
+  const sample = sampleEl.value.trim();
+  const content = contentEl.value.trim();
+  if (!sample) {
+    preview.textContent = 'Paste a sample SMS above...';
     return;
   }
-
-  // Extract amount
-  let amount = 0;
-  const amtMatch = text.match(/(?:EGP|LE|L\.E|ج\.م|مبلغ|amount of)\s*([0-9,.]+)/i) || text.match(/([0-9,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جم)/i);
-  if (amtMatch) {
-    amount = parseFloat(amtMatch[1].replace(/,/g, ''));
-  }
-
-  // Extract merchant / source
-  let merchant = 'Unknown / Card';
-  const merchMatch = text.match(/@\s*([^,\n.]+)/i) || text.match(/(?:at|لدى|from|إلى|via|بواسطة)\s+([^,\n.]+)/i);
-  if (merchMatch) {
-    merchant = merchMatch[1].trim();
-  }
-
-  // Check custom sender rules with fuzzy matching
-  const rules = getStoredCustomRules();
-  const normText = normalizeSender(text);
-  let matchedRule = null;
-  for (const r of rules) {
-    if (r.keyword && normText.includes(normalizeSender(r.keyword))) {
-      matchedRule = r;
-      break;
-    }
-  }
-
-  const isIncome = /(?:received|recieved|إيداع|اضافة راتبك|استلام|refund)/i.test(text);
-  const kind = isIncome ? 'Incoming' : 'Outgoing';
-
-  if (amount > 0) {
-    const ruleTag = matchedRule ? `<span class="badge blue">Rule Matched: ${matchedRule.name} ➔ ${matchedRule.category}</span>` : '';
-    preview.innerHTML = `✅ <span style="color:#10b981">EGP ${amount.toFixed(2)}</span> • <span style="color:#38bdf8">${merchant}</span> • <em>${kind}</em> ${ruleTag}`;
-    if (keywordInput && !keywordInput.value && merchant !== 'Unknown / Card') {
-      keywordInput.value = merchant.split(' ')[0];
-      onSenderInputChanged(keywordInput.value);
-    }
-  } else {
-    preview.innerHTML = `⚠️ <span style="color:#f43f5e">No amount detected. Ensure currency/amount (e.g. EGP 350) is in the message.</span>`;
-  }
+  const amountMatch = sample.match(/(?:EGP|LE|L[.]E|ج[.]م|مبلغ|amount of)[ ]*([0-9,.]+)/i) ||
+    sample.match(/([0-9,.]+)[ ]*(?:EGP|LE|L[.]E|ج[.]م|جم)/i);
+  const amount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : 0;
+  const merchantMatch = sample.match(/@[ ]*([^,.]+)/i) ||
+    sample.match(/(?:at|لدى|from|إلى|via|بواسطة)[ ]+([^,.]+)/i);
+  const merchant = merchantMatch ? merchantMatch[1].trim() : 'Unknown';
+  const matchesContent = !content || normalizeSender(sample).includes(normalizeSender(content));
+  const direction = document.getElementById('hub-rule-direction')?.value || 'auto';
+  const kind = direction === 'auto'
+    ? (/(received|recieved|إيداع|إضافة راتبك|استلام|refund|استرجاع)/i.test(sample) ? 'Income' : 'Expense')
+    : direction;
+  preview.innerHTML = (matchesContent ? '✅ ' : '⚠️ ') +
+    '<span style="color:#10b981">EGP ' + (amount || 0).toFixed(2) + '</span> • ' +
+    '<span style="color:#38bdf8">' + esc(merchant) + '</span> • ' + esc(kind) +
+    (senderEl && senderEl.value ? ' • sender: ' + esc(senderEl.value) : '') +
+    (content ? ' • content: ' + (matchesContent ? 'matched' : 'not matched') : '');
 }
 
-function getStoredCustomRules() {
-  try {
-    return JSON.parse(localStorage.getItem('custom_sms_rules') || '[]');
-  } catch (e) {
-    return [];
-  }
-}
-
-function saveCustomSmsRule() {
-  const keywordInput = document.getElementById('hub-rule-keyword');
-  const catSelect = document.getElementById('hub-rule-category');
-  const smsInput = document.getElementById('hub-sms-input');
-
-  const keyword = keywordInput ? keywordInput.value.trim() : '';
-  const category = catSelect ? catSelect.value : '';
-
-  if (!keyword) {
-    toast('Please enter a bank sender name or merchant keyword', 'error');
-    return;
-  }
-
-  const rules = getStoredCustomRules();
-  const newRule = {
-    id: 'rule_' + Date.now(),
-    name: keyword,
-    keyword: keyword,
-    category: category,
-     categoryId: category,
-     created_at: new Date().toISOString()
-  };
-
-  rules.push(newRule);
-  localStorage.setItem('custom_sms_rules', JSON.stringify(rules));
-
-  // Sync to Native Android App
-  if (window.AndroidApp && typeof window.AndroidApp.syncCustomSmsRules === 'function') {
-    window.AndroidApp.syncCustomSmsRules(JSON.stringify(rules));
-  }
-
-  // Save to DB
-  fetch('/api/action', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'addSmsRule', args: [newRule] })
-  }).catch(() => {});
-
-  if (keywordInput) keywordInput.value = '';
-  if (smsInput) smsInput.value = '';
-  onSenderInputChanged('');
+function clearSmsRuleForm() {
+  ['hub-rule-sender', 'hub-rule-content', 'hub-sms-input'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  ['hub-rule-direction', 'hub-rule-catch-mode', 'hub-rule-confirmation'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.selectedIndex = 0;
+  });
+  state.smsRuleEditingId = null;
+  const cancel = document.getElementById('hub-rule-cancel-edit');
+  if (cancel) cancel.style.display = 'none';
   testCustomSmsRule();
-  renderCustomSmsRulesList();
-  toast(`✅ Rule saved: "${keyword}" (Fuzzy Match) ➔ ${category || 'Uncategorized'}`, 'success');
 }
 
-function deleteCustomSmsRule(ruleId) {
-  let rules = getStoredCustomRules();
-  rules = rules.filter(r => r.id !== ruleId);
-  localStorage.setItem('custom_sms_rules', JSON.stringify(rules));
+function cancelSmsRuleEdit() {
+  clearSmsRuleForm();
+}
 
-  if (window.AndroidApp && typeof window.AndroidApp.syncCustomSmsRules === 'function') {
-    window.AndroidApp.syncCustomSmsRules(JSON.stringify(rules));
+async function saveCustomSmsRule() {
+  const sender = document.getElementById('hub-rule-sender')?.value.trim() || '';
+  const content = document.getElementById('hub-rule-content')?.value.trim() || '';
+  const categoryId = document.getElementById('hub-rule-category')?.value || null;
+  const rule = {
+    name: sender || content,
+    senderPattern: sender,
+    contentPattern: content,
+    matchType: 'contains',
+    direction: document.getElementById('hub-rule-direction')?.value || 'auto',
+    catchMode: document.getElementById('hub-rule-catch-mode')?.value || 'catch',
+    confirmationMode: document.getElementById('hub-rule-confirmation')?.value || 'confirm',
+    categoryId,
+    isActive: true,
+    priority: 100
+  };
+  if (!sender && !content) {
+    toast('Add a sender or content phrase first', 'error');
+    return;
   }
+  const editingId = state.smsRuleEditingId;
+  try {
+    const response = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: editingId ? 'updateSmsRule' : 'addSmsRule', args: editingId ? [editingId, rule] : [rule] })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.error) throw new Error(result.error || 'Could not save SMS rule');
+    const saved = normalizeSmsRule(result.rule || { ...rule, id: editingId });
+    const rules = getStoredCustomRules().filter(item => item.id !== saved.id);
+    rules.push(saved);
+    persistRulesLocally(rules);
+    clearSmsRuleForm();
+    renderCustomSmsRulesList();
+    toast('SMS rule saved', 'success');
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
 
-  fetch('/api/action', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'deleteSmsRule', args: [ruleId] })
-  }).catch(() => {});
+function editCustomSmsRule(ruleId) {
+  const rule = getStoredCustomRules().find(item => item.id === ruleId);
+  if (!rule) return;
+  document.getElementById('hub-rule-sender').value = rule.senderPattern || '';
+  document.getElementById('hub-rule-content').value = rule.contentPattern || '';
+  document.getElementById('hub-rule-direction').value = rule.direction || 'auto';
+  document.getElementById('hub-rule-catch-mode').value = rule.catchMode || 'catch';
+  document.getElementById('hub-rule-confirmation').value = rule.confirmationMode || 'confirm';
+  document.getElementById('hub-rule-category').value = rule.categoryId || '';
+  state.smsRuleEditingId = rule.id;
+  const cancel = document.getElementById('hub-rule-cancel-edit');
+  if (cancel) cancel.style.display = 'block';
+  testCustomSmsRule();
+}
 
-  renderCustomSmsRulesList();
-  toast('Rule deleted', 'info');
+async function toggleSmsRule(ruleId) {
+  const rule = getStoredCustomRules().find(item => item.id === ruleId);
+  if (!rule) return;
+  rule.isActive = !rule.isActive;
+  try {
+    const response = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'updateSmsRule', args: [ruleId, rule] })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.error) throw new Error(result.error || 'Could not update SMS rule');
+    persistRulesLocally(getStoredCustomRules().map(item => item.id === ruleId ? normalizeSmsRule(result.rule || rule) : item));
+    renderCustomSmsRulesList();
+  } catch (error) {
+    rule.isActive = !rule.isActive;
+    toast(error.message, 'error');
+  }
+}
+
+async function deleteCustomSmsRule(ruleId) {
+  if (!confirm('Delete this SMS rule?')) return;
+  try {
+    const response = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'deleteSmsRule', args: [ruleId] })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.error) throw new Error(result.error || 'Could not delete SMS rule');
+    persistRulesLocally(getStoredCustomRules().filter(item => item.id !== ruleId));
+    renderCustomSmsRulesList();
+    toast('SMS rule deleted', 'info');
+  } catch (error) {
+    toast(error.message, 'error');
+  }
 }
 
 function renderCustomSmsRulesList() {
   const container = document.getElementById('hub-custom-rules-container');
   if (!container) return;
-
   const rules = getStoredCustomRules();
-  if (rules.length === 0) {
-    container.innerHTML = `<small style="color:var(--text-muted); display:block; text-align:center; padding:8px">No custom bank rules saved yet.</small>`;
+  if (!rules.length) {
+    container.innerHTML = '<small style="color:var(--text-muted); display:block; text-align:center; padding:8px">No SMS rules saved yet.</small>';
     return;
   }
-
-  container.innerHTML = `
-    <div style="font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:6px">Active Custom Bank Senders & Rules (${rules.length}):</div>
-    <div style="display:flex; flex-direction:column; gap:6px">
-      ${rules.map(r => `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6); padding:8px 12px; border-radius:10px; border:1px solid var(--surface-border)">
-          <div>
-            <strong style="font-size:12px; color:var(--text)">${esc(r.name)}</strong>
-            <span style="font-size:11px; color:var(--text-muted); margin-left:6px">➔ ${esc(r.category || 'Uncategorized')}</span>
-            <small style="display:block; font-size:10px; color:#38bdf8">Fuzzy match: ${normalizeSender(r.keyword)}</small>
-          </div>
-          <button class="modal-close" style="font-size:16px; color:var(--danger); padding:2px 6px" onclick="deleteCustomSmsRule('${r.id}')" title="Delete rule">&times;</button>
-        </div>
-      `).join('')}
-    </div>
-  `;
+  const activeCount = rules.filter(rule => rule.isActive).length;
+  container.innerHTML = '<div style="font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:6px">' +
+    activeCount + ' active of ' + rules.length + ' SMS rules</div>' +
+    '<div style="display:flex; flex-direction:column; gap:6px">' +
+    rules.map(rule => '<div style="background:rgba(15,23,42,0.6); padding:10px 12px; border-radius:10px; border:1px solid var(--surface-border)">' +
+      '<div style="display:flex; justify-content:space-between; gap:8px">' +
+      '<strong style="font-size:12px">' + esc(rule.senderPattern || 'Any sender') + '</strong>' +
+      '<span style="font-size:10px; color:' + (rule.isActive ? '#4ade80' : '#94a3b8') + '">' + (rule.isActive ? 'ACTIVE' : 'PAUSED') + '</span></div>' +
+      '<div style="font-size:11px; color:var(--text-muted); margin-top:4px">' +
+      esc(rule.contentPattern || 'Any content') + ' → ' + esc(rule.direction) + ' · ' + esc(rule.category || 'Uncategorized') + '</div>' +
+      '<div style="display:flex; gap:6px; margin-top:8px">' +
+      '<button class="alt" style="font-size:11px; padding:5px 8px" onclick="editCustomSmsRule(this.dataset.id)" data-id="' + esc(rule.id) + '">Edit</button>' +
+      '<button class="alt" style="font-size:11px; padding:5px 8px" onclick="toggleSmsRule(this.dataset.id)" data-id="' + esc(rule.id) + '">' + (rule.isActive ? 'Pause' : 'Enable') + '</button>' +
+      '<button class="alt" style="font-size:11px; padding:5px 8px; color:var(--danger)" onclick="deleteCustomSmsRule(this.dataset.id)" data-id="' + esc(rule.id) + '">Delete</button>' +
+      '</div></div>').join('') + '</div>';
 }
 
 function triggerNativeTestFromHub() {

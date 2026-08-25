@@ -41,14 +41,15 @@ public class NotificationActionReceiver extends BroadcastReceiver {
 
         String rawMessage = intent.getStringExtra("raw_message");
         String category = intent.getStringExtra("category");
+        String sender = intent.getStringExtra("sender");
         double amount = intent.getDoubleExtra("amount", 0.0);
 
         if (rawMessage != null && !rawMessage.trim().isEmpty()) {
-            sendWebhookAsync(context, rawMessage, category, amount, localId);
+            sendWebhookAsync(context, rawMessage, category, amount, localId, sender);
         }
     }
 
-    private void sendWebhookAsync(Context context, String rawMessage, String category, double amount, long localId) {
+    private void sendWebhookAsync(Context context, String rawMessage, String category, double amount, long localId, String sender) {
         new Thread(() -> {
             try {
                 SharedPreferences prefs = context.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
@@ -70,6 +71,7 @@ public class NotificationActionReceiver extends BroadcastReceiver {
 
                 JSONObject payload = new JSONObject();
                 payload.put("message", rawMessage);
+                 if (sender != null && !sender.isEmpty()) payload.put("sender", sender);
                  payload.put("idempotency_key", String.valueOf(localId));
                 if (category != null && !category.isEmpty()) {
                     payload.put("category", category);

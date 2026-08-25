@@ -84,6 +84,7 @@ export async function POST(req) {
     let body = rawBody;
     let isPendingQueue = false;
     let customCategory = null;
+    let sender = '';
     let idempotencyKey = null;
 
     try {
@@ -96,6 +97,7 @@ export async function POST(req) {
         if (json.category) {
           customCategory = json.category;
         }
+        if (json.sender) sender = String(json.sender).slice(0, 160);
         if (json.idempotency_key) idempotencyKey = String(json.idempotency_key).slice(0, 160);
       }
     } catch (e) {
@@ -118,7 +120,10 @@ export async function POST(req) {
 
       if (userRules && userRules.length > 0) {
         for (const rule of userRules) {
-          if (rule.contains_keyword && body.toLowerCase().includes(rule.contains_keyword.toLowerCase())) {
+          const contentPattern = rule.content_pattern || rule.contains_keyword || '';
+          const senderPattern = rule.sender_pattern || '';
+          const senderMatches = !senderPattern || (sender && sender.toLowerCase().includes(senderPattern.toLowerCase()));
+          if (rule.catch_mode !== 'ignore' && senderMatches && (!contentPattern || body.toLowerCase().includes(contentPattern.toLowerCase()))) {
             const amtMatch = body.match(/EGP\s*([\d,.]+)/i) || body.match(/([\d,.]+)\s*EGP/i);
             const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : null;
             if (amount && amount > 0) {

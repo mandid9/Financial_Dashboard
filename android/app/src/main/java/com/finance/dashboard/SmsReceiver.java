@@ -23,20 +23,21 @@ public class SmsReceiver extends BroadcastReceiver {
         if (pdus == null || pdus.length == 0) return;
         String format = bundle.getString("format");
         StringBuilder body = new StringBuilder();
+        String sender = "";
         for (Object pdu : pdus) {
             SmsMessage sms = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                     ? SmsMessage.createFromPdu((byte[]) pdu, format)
                     : SmsMessage.createFromPdu((byte[]) pdu);
-            if (sms != null) body.append(sms.getMessageBody());
+            if (sms != null) { body.append(sms.getMessageBody()); sender = sms.getOriginatingAddress(); }
         }
-        BankParser.ParsedTransaction tx = BankParser.parse(context, body.toString());
+        BankParser.ParsedTransaction tx = BankParser.parse(context, body.toString(), sender);
         if (!tx.isMatched || tx.amount <= 0) return;
         long localId = TransactionBackupStore.saveTransaction(context, tx.rawMessage, tx.amount,
-                tx.merchant, tx.kind, tx.defaultCategory, "pending");
-        showActionNotification(context, tx, localId);
+                tx.merchant, tx.kind, tx.defaultCategory, "pending", sender);
+        showActionNotification(context, tx, localId, sender);
     }
 
-    private void showActionNotification(Context context, BankParser.ParsedTransaction tx, long localId) {
+    private void showActionNotification(Context context, BankParser.ParsedTransaction tx, long localId, String sender) {
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -47,9 +48,9 @@ public class SmsReceiver extends BroadcastReceiver {
             nm.createNotificationChannel(channel);
         }
         int notificationId = (int) (localId % Integer.MAX_VALUE);
-        PendingIntent confirm = action(context, NotificationActionReceiver.ACTION_CONFIRM, tx, localId, notificationId, 0);
-        PendingIntent category = action(context, NotificationActionReceiver.ACTION_CATEGORY, tx, localId, notificationId, 1);
-        PendingIntent dismiss = action(context, NotificationActionReceiver.ACTION_DISMISS, tx, localId, notificationId, 2);
+        PendingIntent confirm = action(context, NotificationActionReceiver.ACTION_CONFIRM, tx, localId, notificationId, 0, sender);
+        PendingIntent category = action(context, NotificationActionReceiver.ACTION_CATEGORY, tx, localId, notificationId, 1, sender);
+        PendingIntent dismiss = action(context, NotificationActionReceiver.ACTION_DISMISS, tx, localId, notificationId, 2, sender);
         Intent open = new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent content = PendingIntent.getActivity(context, notificationId, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | immutable());
@@ -65,7 +66,7 @@ public class SmsReceiver extends BroadcastReceiver {
         nm.notify(notificationId, b.build());
         AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         Intent timeout = new Intent(context, TimeoutReceiver.class).putExtra("local_id", localId)
-                .putExtra("notification_id", notificationId).putExtra("raw_message", tx.rawMessage)
+                .putExtra("notification_id", notificationId).putExtra("raw_message", tx.rawMessage).putExtra("sender", sender)
                 .putExtra("amount", tx.amount).putExtra("merchant", tx.merchant).putExtra("kind", tx.kind);
         PendingIntent timeoutPi = PendingIntent.getBroadcast(context, notificationId, timeout,
                 PendingIntent.FLAG_UPDATE_CURRENT | immutable());
@@ -73,9 +74,9 @@ public class SmsReceiver extends BroadcastReceiver {
                 System.currentTimeMillis() + 5 * 60 * 1000L, timeoutPi);
     }
 
-    private PendingIntent action(Context c, String action, BankParser.ParsedTransaction tx, long id, int nid, int request) {
+    private PendingIntent action(Context c, String action, BankParser.ParsedTransaction tx, long id, int nid, int request, String sender) {
         Intent i = new Intent(c, NotificationActionReceiver.class).setAction(action)
-                .putExtra("local_id", id).putExtra("notification_id", nid).putExtra("raw_message", tx.rawMessage)
+                .putExtra("local_id", id).putExtra("notification_id", nid).putExtra("raw_message", tx.rawMessage).putExtra("sender", sender)
                 .putExtra("amount", tx.amount).putExtra("kind", tx.kind).putExtra("category", tx.defaultCategory);
         return PendingIntent.getBroadcast(c, nid * 10 + request, i,
                 PendingIntent.FLAG_UPDATE_CURRENT | immutable());

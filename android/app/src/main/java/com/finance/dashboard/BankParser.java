@@ -1,4 +1,4 @@
-package com.finance.dashboard;
+﻿package com.finance.dashboard;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -36,6 +36,10 @@ public class BankParser {
     }
 
     public static ParsedTransaction parse(Context context, String body) {
+        return parse(context, body, "");
+    }
+
+    public static ParsedTransaction parse(Context context, String body, String sender) {
         if (body == null || body.trim().isEmpty()) {
             return new ParsedTransaction(false, 0, "", "outgoing", "", "");
         }
@@ -51,13 +55,18 @@ public class BankParser {
                     JSONArray rules = new JSONArray(customRulesJson);
                     for (int i = 0; i < rules.length(); i++) {
                         JSONObject rule = rules.getJSONObject(i);
-                        String keyword = rule.optString("keyword", "");
-                        if (!keyword.isEmpty() && msg.toLowerCase().contains(keyword.toLowerCase())) {
+                        String keyword = rule.optString("contentPattern", rule.optString("keyword", ""));
+                        String senderPattern = rule.optString("senderPattern", "");
+                        String catchMode = rule.optString("catchMode", "catch");
+                        boolean senderMatches = senderPattern.isEmpty() || (sender != null && sender.toLowerCase().contains(senderPattern.toLowerCase()));
+                        boolean contentMatches = keyword.isEmpty() || msg.toLowerCase().contains(keyword.toLowerCase());
+                        if (!"ignore".equalsIgnoreCase(catchMode) && senderMatches && contentMatches) {
                             double amt = extractGenericAmount(msg);
                             if (amt > 0) {
                                 String name = rule.optString("name", keyword);
-                                String kind = rule.optString("kind", "outgoing");
-                                String category = rule.optString("category", "");
+                                String kind = rule.optString("direction", rule.optString("kind", "outgoing"));
+                                if ("auto".equalsIgnoreCase(kind)) kind = "outgoing";
+                                String category = rule.optString("category", rule.optString("categoryId", ""));
                                 return new ParsedTransaction(true, amt, name, kind, "Custom Rule: " + name, msg, category);
                             }
                         }

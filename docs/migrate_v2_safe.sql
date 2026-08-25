@@ -118,3 +118,19 @@ SELECT count(*) AS your_backfilled_transactions FROM public.transactions WHERE u
 ALTER TABLE public.pending_sms ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_sms_idempotency ON public.pending_sms(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
 
+
+-- SMS rule v2 fields: sender/content/action are explicit and independently editable.
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS sender_pattern TEXT;
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS content_pattern TEXT;
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS match_type TEXT DEFAULT 'contains';
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS direction TEXT DEFAULT 'auto';
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS catch_mode TEXT DEFAULT 'catch';
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS amount_pattern TEXT;
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS merchant_pattern TEXT;
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS confirmation_mode TEXT DEFAULT 'confirm';
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 100;
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS match_count INTEGER DEFAULT 0;
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS last_matched_at TIMESTAMPTZ;
+ALTER TABLE public.user_sms_rules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
+UPDATE public.user_sms_rules SET content_pattern = contains_keyword WHERE content_pattern IS NULL;
+UPDATE public.user_sms_rules SET sender_pattern = contains_keyword WHERE sender_pattern IS NULL AND content_pattern IS NULL;

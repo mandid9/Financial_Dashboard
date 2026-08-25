@@ -258,3 +258,55 @@ Keep one Supabase identity and one web OAuth flow. Do not add a separate native 
 ### Current conclusion
 The old web Google OAuth logic is still active and is also the Android app's effective Google OAuth path. No duplicate native OAuth implementation was found.
 
+
+---
+
+## 🧩 8. SMS Rules Organization Audit — Started (2026-08-25)
+
+Scope: reconcile Sender detection, SMS content matching, what-to-catch behavior, rule persistence, Android parser behavior, backend webhook behavior, and the Hub UI/UX. No implementation changes are authorized from this audit until the proposed plan is reviewed.
+
+### Audit findings
+- The UI calls the field “Bank Sender / Keyword”; one value is used for two different concepts.
+- Detected senders are seeded from a hardcoded list and transaction history source labels, not the original SMS originating address. Merchants and card labels can therefore appear as “senders.”
+- Runtime matching is only normalized substring matching. The UI calls it fuzzy matching, but there is no sender-aware or structured content rule.
+- The UI preview, Android BankParser, and backend webhook each implement different amount, direction, merchant, and currency logic.
+- Browser localStorage is the practical rule source for the UI and Android bridge. Existing DB rules are not loaded back into localStorage/Android on startup.
+- New UI rules use local rule_Date IDs, while deleteSmsRule deletes by the database UUID; DB deletion can silently miss the intended rule.
+- addSmsRule and deleteSmsRule swallow Supabase errors and return success, so the UI can report success when persistence failed.
+- There is no edit action, enable/disable control, priority/order, match statistics, last-seen data, or clear “catch/ignore” policy.
+- Custom rules default to outgoing in the backend/Android path unless the entire SMS matches a separate income pattern; the rule model cannot explicitly declare direction.
+- The schema stores contains_keyword, merchant_extractor, and default_category_id, but the UI does not provide a real extractor or structured content/action configuration.
+
+### Recommended target model
+Each rule should have one stable database UUID and these explicit concerns:
+1. Sender match: exact sender ID plus optional normalized aliases.
+2. Content match: contains, regex, or sample-derived pattern; never silently treat a sender label as message content.
+3. Transaction interpretation: catch mode, direction, amount extractor, merchant extractor, and category.
+4. Safety/lifecycle: active flag, priority, confirmation policy, created/updated timestamps, and match counters.
+5. Device distribution: versioned DB rules synced to Android; local cache is only a read-through/offline cache.
+
+### Proposed UX
+Use a four-step “Create SMS rule” flow:
+1. Choose or paste the sender ID.
+2. Paste a real sample SMS and show highlighted sender, amount, merchant, and direction.
+3. Choose what to catch: expense, income, refund, or ignore; choose category and confirmation mode.
+4. Review the exact rule summary and save/test it.
+
+The rules list should be grouped by sender and show Active/Paused, direction, category, sample match, last matched, and actions: Test, Edit, Pause, Delete. Keep fuzzy sender suggestions as an assisted input feature only; runtime matching should be deterministic and auditable.
+
+### Implementation plan
+1. Define one Rule JSON/schema contract and migrate existing rules into it.
+2. Fix UUID ownership and persistence: return inserted DB rows, use UUIDs in the UI, load DB rules at login, and surface mutation errors.
+3. Add sender provenance to SMS ingestion and store the originating address separately from merchant/source.
+4. Create one shared matching/extraction contract consumed by backend and Android; add explicit direction and catch/ignore behavior.
+5. Replace the current Hub panel with the four-step wizard and grouped rule management list.
+6. Add safe preview/test fixtures for Egyptian bank, wallet, Arabic, English, promotion, and unrelated SMS messages.
+7. Add audit logging/match counters and verify browser, Android WebView, offline cache, and multi-user isolation.
+8. Update this section after each implementation phase before handing work to another agent.
+
+### SMS rules implementation — Phase 1 started
+- Goal: establish one rule contract and make database UUIDs/persistence authoritative.
+- Planned files: schema_v2_multiuser.sql, docs/migrate_v2_safe.sql, src/app/api/action/route.js, src/app/api/webhook/route.js, public/index.html, Android rule bridge/parser.
+- Safety: preserve existing local rules through normalization; do not delete rules during migration.
+- This phase is active; update this section at each checkpoint.
+\n## SMS Rules Organization - Implementation Checkpoint (2026-08-25)\n\nImplemented the approved reorganization:\n- Added shared rule fields and safe migration columns for sender, content, match type, direction, catch mode, priority, confirmation, and timestamps.\n- Made API-created/updated rules return authoritative database rows; delete now requires a database UUID and errors are surfaced.\n- Dashboard now loads smsRules from the authenticated user database; browser local storage is cache/fallback only after server load.\n- Replaced the unstructured SMS form with Sender, Sample SMS, Content, Direction/Catch, and Category/Confirmation sections with server-backed edit/pause/delete controls.\n- Removed transaction-history labels from sender suggestions to avoid confusing merchants with SMS origins.\n- Added sender-aware matching to Android and webhook paths, including sender-only rules and ignore rules.\n- Preserved sender provenance through Android offline SQLite migration v2, retries, and notification actions.\n\nValidation: web JavaScript/API syntax checks pass; npm run lint passes; git diff --check passes after EOF normalization. Android Gradle compilation remains pending because the checkout contains no gradlew wrapper and no system Gradle executable was available.\n\nNext handoff: run the SQL migration in the deployed Supabase project, then verify add/edit/pause/delete and sender/content matching on web and Android with representative SMS fixtures.\n

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { evaluateAndDispatchTriggers } from '@/lib/push';
 import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
@@ -406,25 +406,82 @@ export async function POST(req) {
 
       case 'addSmsRule': {
         const [rule] = args;
-        try {
-          await supabase.from('user_sms_rules').insert([{
-            user_id: userId,
-            pattern_name: rule.name || rule.keyword,
-            contains_keyword: rule.keyword,
-            default_category_id: rule.categoryId || null,
-            is_active: true
-          }]);
-        } catch (e) {
-          console.warn('user_sms_rules notice:', e.message);
+        const senderPattern = sanitizeStr(rule?.senderPattern || rule?.sender || '', 160);
+        const contentPattern = sanitizeStr(rule?.contentPattern || rule?.keyword || '', 500);
+        if (!senderPattern && !contentPattern) {
+          return NextResponse.json({ error: 'Sender or content pattern is required' }, { status: 400 });
         }
-        return NextResponse.json({ success: true });
+        const row = {
+          user_id: userId,
+          pattern_name: sanitizeStr(rule?.name || senderPattern || contentPattern, 160),
+          contains_keyword: contentPattern || senderPattern,
+          sender_pattern: senderPattern || null,
+          content_pattern: contentPattern || null,
+          match_type: ['contains', 'regex', 'exact'].includes(rule?.matchType) ? rule.matchType : 'contains',
+          direction: ['auto', 'outgoing', 'incoming', 'refund'].includes(rule?.direction) ? rule.direction : 'auto',
+          catch_mode: ['catch', 'ignore'].includes(rule?.catchMode) ? rule.catchMode : 'catch',
+          amount_pattern: sanitizeStr(rule?.amountPattern || '', 500) || null,
+          merchant_pattern: sanitizeStr(rule?.merchantPattern || '', 500) || null,
+          default_category_id: rule?.categoryId || null,
+          confirmation_mode: ['confirm', 'auto'].includes(rule?.confirmationMode) ? rule.confirmationMode : 'confirm',
+          priority: Number.isFinite(Number(rule?.priority)) ? Math.max(0, Math.min(10000, Number(rule.priority))) : 100,
+          is_active: rule?.isActive !== false
+        };
+        const { data: insertedRule, error } = await supabase
+          .from('user_sms_rules')
+          .insert([row])
+          .select('*')
+          .single();
+        if (error) throw error;
+        return NextResponse.json({ success: true, rule: insertedRule });
+      }
+
+      case 'updateSmsRule': {
+        const [ruleId, rule] = args;
+        if (!ruleId) return NextResponse.json({ error: 'Rule ID is required' }, { status: 400 });
+        const senderPattern = sanitizeStr(rule?.senderPattern || rule?.sender || '', 160);
+        const contentPattern = sanitizeStr(rule?.contentPattern || rule?.keyword || '', 500);
+        if (!senderPattern && !contentPattern) {
+          return NextResponse.json({ error: 'Sender or content pattern is required' }, { status: 400 });
+        }
+        const updates = {
+          pattern_name: sanitizeStr(rule?.name || senderPattern || contentPattern, 160),
+          contains_keyword: contentPattern || senderPattern,
+          sender_pattern: senderPattern || null,
+          content_pattern: contentPattern || null,
+          match_type: ['contains', 'regex', 'exact'].includes(rule?.matchType) ? rule.matchType : 'contains',
+          direction: ['auto', 'outgoing', 'incoming', 'refund'].includes(rule?.direction) ? rule.direction : 'auto',
+          catch_mode: ['catch', 'ignore'].includes(rule?.catchMode) ? rule.catchMode : 'catch',
+          amount_pattern: sanitizeStr(rule?.amountPattern || '', 500) || null,
+          merchant_pattern: sanitizeStr(rule?.merchantPattern || '', 500) || null,
+          default_category_id: rule?.categoryId || null,
+          confirmation_mode: ['confirm', 'auto'].includes(rule?.confirmationMode) ? rule.confirmationMode : 'confirm',
+          priority: Number.isFinite(Number(rule?.priority)) ? Math.max(0, Math.min(10000, Number(rule.priority))) : 100,
+          is_active: rule?.isActive !== false,
+          updated_at: new Date().toISOString()
+        };
+        const { data: updatedRule, error } = await supabase
+          .from('user_sms_rules')
+          .update(updates)
+          .eq('id', ruleId)
+          .eq('user_id', userId)
+          .select('*')
+          .single();
+        if (error) throw error;
+        return NextResponse.json({ success: true, rule: updatedRule });
       }
 
       case 'deleteSmsRule': {
         const [ruleId] = args;
-        try {
-          await supabase.from('user_sms_rules').delete().eq('id', ruleId).eq('user_id', userId);
-        } catch (e) {}
+        if (!ruleId || !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(String(ruleId))) {
+          return NextResponse.json({ error: 'A database rule UUID is required' }, { status: 400 });
+        }
+        const { error } = await supabase
+          .from('user_sms_rules')
+          .delete()
+          .eq('id', ruleId)
+          .eq('user_id', userId);
+        if (error) throw error;
         return NextResponse.json({ success: true });
       }
 

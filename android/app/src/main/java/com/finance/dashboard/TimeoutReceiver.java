@@ -37,13 +37,14 @@ public class TimeoutReceiver extends BroadcastReceiver {
         double amount = intent.getDoubleExtra("amount", 0.0);
         String merchant = intent.getStringExtra("merchant");
         String kind = intent.getStringExtra("kind");
+        String sender = intent.getStringExtra("sender");
 
         if (rawMessage != null && !rawMessage.trim().isEmpty()) {
-            pushToPendingInbox(context, rawMessage, amount, merchant, kind, localId);
+            pushToPendingInbox(context, rawMessage, amount, merchant, kind, localId, sender);
         }
     }
 
-    private void pushToPendingInbox(Context context, String rawMessage, double amount, String merchant, String kind, long localId) {
+    private void pushToPendingInbox(Context context, String rawMessage, double amount, String merchant, String kind, long localId, String sender) {
         new Thread(() -> {
             try {
                 SharedPreferences prefs = context.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
@@ -68,6 +69,7 @@ public class TimeoutReceiver extends BroadcastReceiver {
                 payload.put("amount", amount);
                 payload.put("merchant", merchant);
                 payload.put("kind", kind);
+                 if (sender != null && !sender.isEmpty()) payload.put("sender", sender);
                  payload.put("idempotency_key", String.valueOf(localId));
                  payload.put("pending", true);
 
