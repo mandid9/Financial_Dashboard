@@ -310,3 +310,17 @@ The rules list should be grouped by sender and show Active/Paused, direction, ca
 - Safety: preserve existing local rules through normalization; do not delete rules during migration.
 - This phase is active; update this section at each checkpoint.
 \n## SMS Rules Organization - Implementation Checkpoint (2026-08-25)\n\nImplemented the approved reorganization:\n- Added shared rule fields and safe migration columns for sender, content, match type, direction, catch mode, priority, confirmation, and timestamps.\n- Made API-created/updated rules return authoritative database rows; delete now requires a database UUID and errors are surfaced.\n- Dashboard now loads smsRules from the authenticated user database; browser local storage is cache/fallback only after server load.\n- Replaced the unstructured SMS form with Sender, Sample SMS, Content, Direction/Catch, and Category/Confirmation sections with server-backed edit/pause/delete controls.\n- Removed transaction-history labels from sender suggestions to avoid confusing merchants with SMS origins.\n- Added sender-aware matching to Android and webhook paths, including sender-only rules and ignore rules.\n- Preserved sender provenance through Android offline SQLite migration v2, retries, and notification actions.\n\nValidation: web JavaScript/API syntax checks pass; npm run lint passes; git diff --check passes after EOF normalization. Android Gradle compilation remains pending because the checkout contains no gradlew wrapper and no system Gradle executable was available.\n\nNext handoff: run the SQL migration in the deployed Supabase project, then verify add/edit/pause/delete and sender/content matching on web and Android with representative SMS fixtures.\n
+## Android WebView Dashboard Load Incident - 2026-08-25
+
+Diagnosis:
+- The deployed dashboard URL returned HTTP 200 from the host during verification; browser delivery is healthy.
+- MainActivity restored saved WebView state after relaunch, so a previously aborted page could remain blank.
+- onReceivedError retried only once after 1.2 seconds, reused the same URL/cache, then hid progress without a recovery affordance.
+
+Applied fix:
+- Android startup now uses a cache-bypassing dashboard load and does not restore stale failed WebView state.
+- Main-frame WebView failures are logged and retried up to five times with exponential backoff, cache bypass, and a timestamp query.
+- Pull-to-refresh uses the same recovery path and resets retry state.
+- Successful loads restore normal cache mode and clear retry state.
+
+Validation pending: Java structural checks and web lint/syntax checks; Android Gradle build remains unavailable because this checkout has no gradlew wrapper or system Gradle executable.

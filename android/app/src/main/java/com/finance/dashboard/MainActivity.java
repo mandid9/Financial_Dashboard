@@ -5,6 +5,8 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.provider.Telephony;
 import android.graphics.Bitmap;
 import android.os.Build;
 import android.os.Bundle;
@@ -40,6 +42,8 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.json.JSONArray;
+
 public class MainActivity extends AppCompatActivity {
 
     public static final String DASHBOARD_URL = "https://finance-dashboard-next-two.vercel.app/index.html";
@@ -50,6 +54,7 @@ public class MainActivity extends AppCompatActivity {
     private SwipeRefreshLayout swipeRefresh;
     private ProgressBar progressBar;
     private boolean isRetrying = false;
+    private int retryAttempt = 0;
     private float touchStartY = 0f;
 
     @Override
@@ -84,11 +89,8 @@ public class MainActivity extends AppCompatActivity {
         setupSwipeRefresh();
         checkAndRequestPermissions();
 
-        if (savedInstanceState == null) {
-            webView.loadUrl(DASHBOARD_URL);
-        } else {
-            webView.restoreState(savedInstanceState);
-        }
+        retryAttempt = 0;
+        loadDashboard(true);
     }
 
     @Override
@@ -154,6 +156,8 @@ public class MainActivity extends AppCompatActivity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setNetworkAvailable(true);
+        settings.setNetworkAvailable(true);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
          settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
@@ -183,32 +187,28 @@ public class MainActivity extends AppCompatActivity {
                 return host == null || !host.equals("finance-dashboard-next-two.vercel.app");
             }
 
-            @Override
-            public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                progressBar.setVisibility(View.VISIBLE);
-            }
+             @Override
+             public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                 progressBar.setVisibility(View.VISIBLE);
+             }
 
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                progressBar.setVisibility(View.GONE);
-                swipeRefresh.setRefreshing(false);
-                isRetrying = false;
-            }
+             @Override
+             public void onPageFinished(WebView view, String url) {
+                 progressBar.setVisibility(View.GONE);
+                 swipeRefresh.setRefreshing(false);
+                 isRetrying = false;
+                 retryAttempt = 0;
+             }
 
-            @Override
-            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                super.onReceivedError(view, request, error);
-                if (request.isForMainFrame()) {
-                    progressBar.setVisibility(View.GONE);
-                    swipeRefresh.setRefreshing(false);
-                    // Automatically retry once if connection aborted transiently during deployment
-                    if (!isRetrying) {
-                        isRetrying = true;
-                        view.postDelayed(() -> view.loadUrl(DASHBOARD_URL), 1200);
-                    }
-                }
-            }
-        });
+             @Override
+             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                 super.onReceivedError(view, request, error);
+                 if (request.isForMainFrame()) {
+                     Log.w(TAG, "Dashboard load failed: " + error.getErrorCode() + " " + error.getDescription());
+                     scheduleDashboardRetry(view);
+                 }
+             }
+         });
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -227,7 +227,8 @@ public class MainActivity extends AppCompatActivity {
         swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.surface);
         swipeRefresh.setOnRefreshListener(() -> {
             isRetrying = false;
-            webView.loadUrl(DASHBOARD_URL);
+            retryAttempt = 0;
+            loadDashboard(true);
         });
 
         // 1. Capture touch start Y position to prevent pull-to-refresh when dragging lower/middle parts or popups
@@ -246,6 +247,25 @@ public class MainActivity extends AppCompatActivity {
             boolean isBelowTopHeader = touchStartY > 220f;
             return isScrolledDown || isBelowTopHeader;
         });
+    }
+
+    private void loadDashboard(boolean bypassCache) {
+        if (webView == null) return;
+        if (bypassCache) webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
+        webView.loadUrl(DASHBOARD_URL + (bypassCache ? "?appRetry=" + System.currentTimeMillis() : ""));
+    }
+
+    private void scheduleDashboardRetry(WebView view) {
+        progressBar.setVisibility(View.GONE);
+        swipeRefresh.setRefreshing(false);
+        if (isRetrying || retryAttempt >= 5) {
+            if (retryAttempt >= 5) Toast.makeText(this, "Dashboard connection failed. Pull down to retry.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        isRetrying = true;
+        long delay = Math.min(15000L, 1000L * (1L << retryAttempt));
+        retryAttempt++;
+        view.postDelayed(() -> { isRetrying = false; loadDashboard(true); }, delay);
     }
 
     private void checkAndRequestPermissions() {
@@ -342,6 +362,27 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @JavascriptInterface
+        public String getRecentSmsSenders() {
+            JSONArray result = new JSONArray();
+            Cursor cursor = null;
+            try {
+                cursor = mActivity.getContentResolver().query(Telephony.Sms.CONTENT_URI, new String[]{Telephony.Sms.ADDRESS}, null, null, Telephony.Sms.DATE + " DESC LIMIT 100");
+                java.util.HashSet<String> seen = new java.util.HashSet<>();
+                if (cursor != null) {
+                    int addressIndex = cursor.getColumnIndex(Telephony.Sms.ADDRESS);
+                    while (cursor.moveToNext() && result.length() < 30) {
+                        String address = addressIndex >= 0 ? cursor.getString(addressIndex) : "";
+                        if (address != null && !address.trim().isEmpty() && seen.add(address.trim())) result.put(address.trim());
+                    }
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (cursor != null) cursor.close();
+            }
+            return result.toString();
+        }
+
+        @JavascriptInterface
         public void syncCustomSmsRules(String jsonRules) {
             if (jsonRules != null) {
                 SharedPreferences prefs = mActivity.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
@@ -413,4 +454,3 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 }
-
