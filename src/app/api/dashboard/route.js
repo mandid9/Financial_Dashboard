@@ -431,6 +431,7 @@ export async function GET(req) {
     const historyItems = filteredHistoryItems.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     const historyTotal = historyItems.length;
     const historyStart = (historyPage - 1) * historyPageSize;
+    const historyPageItems = historyItems.slice(historyStart, historyStart + historyPageSize);
     const pagedOutgoing = historyPageItems.filter(item => item.kind === 'outgoing');
     const pagedIncoming = historyPageItems.filter(item => item.kind === 'incoming');
     const attentionTransactions = outgoing.filter(t => (!t.category || t.category.trim() === '' || t.category === 'Uncategorized') && !t.is_carried_forward);
