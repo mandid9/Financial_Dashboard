@@ -142,6 +142,10 @@ public class MainActivity extends AppCompatActivity {
         if (!isSessionAuthenticated && prefs.getBoolean("biometric_lock_enabled", false) && isBiometricSupported()) {
             webView.setVisibility(android.view.View.INVISIBLE);
             showBiometricPrompt();
+        } else {
+            if (webView != null) {
+                webView.post(() -> webView.evaluateJavascript("if (window.onAppResume) window.onAppResume();", null));
+            }
         }
     }
 
@@ -171,7 +175,7 @@ public class MainActivity extends AppCompatActivity {
                         isSessionAuthenticated = true;
                         if (webView != null) {
                             webView.setVisibility(android.view.View.VISIBLE);
-                            webView.evaluateJavascript("if (window.onBiometricSuccess) window.onBiometricSuccess();", null);
+                            webView.evaluateJavascript("if (window.onBiometricSuccess) window.onBiometricSuccess(); if (window.onAppResume) window.onAppResume();", null);
                         }
                     });
                 }
