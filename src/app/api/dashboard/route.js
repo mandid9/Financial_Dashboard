@@ -1,4 +1,4 @@
-﻿export const dynamic = 'force-dynamic';
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { supabase } from '@/lib/supabase';
@@ -289,6 +289,7 @@ export async function GET(req) {
             kind: 'incoming',
             source: t.source_or_merchant,
             date: new Date(t.transaction_date).toLocaleString(),
+            timestamp: t.transaction_date,
             amount: Number(t.amount),
             note: t.note,
             is_carried_forward: isCarryingToNext,
@@ -390,6 +391,7 @@ export async function GET(req) {
           kind: t.kind,
           source: t.source_or_merchant,
           date: new Date(t.transaction_date).toLocaleString(),
+          timestamp: t.transaction_date,
           amount: Number(t.amount),
           note: t.note,
           category: catName,

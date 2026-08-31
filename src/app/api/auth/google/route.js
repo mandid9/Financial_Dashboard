@@ -6,15 +6,23 @@ export async function GET(req) {
   try {
     const origin = req.nextUrl.origin;
     const redirectTo = `${origin}/index.html`;
+    const searchParams = req.nextUrl.searchParams;
+    const loginHint = searchParams.get('login_hint') || searchParams.get('email') || '';
+
+    const queryParams = {
+      access_type: 'offline',
+    };
+    if (loginHint) {
+      queryParams.login_hint = loginHint;
+    } else {
+      queryParams.prompt = 'select_account';
+    }
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: redirectTo,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'select_account',
-        }
+        queryParams: queryParams,
       }
     });
 

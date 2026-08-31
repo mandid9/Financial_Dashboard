@@ -1,4 +1,4 @@
-﻿package com.finance.dashboard;
+package com.finance.dashboard;
 
 import android.content.ContentValues;
 import android.content.Context;
@@ -18,7 +18,7 @@ import java.nio.charset.StandardCharsets;
 public final class TransactionBackupStore {
     private static final String TAG = "TxBackupStore";
     private static final String DB_NAME = "finance_transactions.db";
-    private static final int DB_VERSION = 2;
+    private static final int DB_VERSION = 1;
     private static final String TABLE = "offline_transactions";
     private static final Object LOCK = new Object();
 
@@ -27,13 +27,11 @@ public final class TransactionBackupStore {
         @Override public void onCreate(SQLiteDatabase db) {
             db.execSQL("CREATE TABLE " + TABLE + " (" +
                     "id INTEGER PRIMARY KEY, raw_message TEXT NOT NULL, amount REAL NOT NULL, " +
-                    "merchant TEXT, sender TEXT, kind TEXT NOT NULL, category TEXT, status TEXT NOT NULL, " +
+                    "merchant TEXT, kind TEXT NOT NULL, category TEXT, status TEXT NOT NULL, " +
                     "created_at INTEGER NOT NULL)");
             db.execSQL("CREATE INDEX idx_offline_status ON " + TABLE + "(status)");
         }
-        @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-            if (oldVersion < 2) db.execSQL("ALTER TABLE " + TABLE + " ADD COLUMN sender TEXT");
-        }
+        @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) { }
     }
 
     private static void migrateLegacy(Context context, SQLiteDatabase db) {
@@ -49,7 +47,6 @@ public final class TransactionBackupStore {
                 values.put("raw_message", row.optString("raw_message", ""));
                 values.put("amount", row.optDouble("amount", 0));
                 values.put("merchant", row.optString("merchant", ""));
-                values.put("sender", row.optString("sender", ""));
                 values.put("kind", row.optString("kind", "outgoing"));
                 values.put("category", row.optString("category", ""));
                 values.put("status", row.optString("status", "pending"));
@@ -62,23 +59,27 @@ public final class TransactionBackupStore {
         }
     }
     public static long saveTransaction(Context context, String rawMessage, double amount, String merchant,
-                                       String kind, String category, String status, String sender) {
+                                       String kind, String category, String status) {
+        return saveTransaction(context, rawMessage, amount, merchant, kind, category, status, System.currentTimeMillis());
+    }
+
+    public static long saveTransaction(Context context, String rawMessage, double amount, String merchant,
+                                       String kind, String category, String status, long timestamp) {
         synchronized (LOCK) {
             Helper helper = new Helper(context);
             SQLiteDatabase db = helper.getWritableDatabase();
             migrateLegacy(context, db);
-            long id = System.currentTimeMillis();
+            long id = timestamp > 0 ? timestamp : System.currentTimeMillis();
             ContentValues values = new ContentValues();
             values.put("id", id);
             values.put("raw_message", rawMessage == null ? "" : rawMessage);
             values.put("amount", amount);
             values.put("merchant", merchant == null ? "" : merchant);
-            values.put("sender", sender == null ? "" : sender);
             values.put("kind", kind == null ? "outgoing" : kind);
             values.put("category", category == null ? "" : category);
             values.put("status", status == null ? "pending" : status);
             values.put("created_at", id);
-            db.insertOrThrow(TABLE, null, values);
+            db.insertWithOnConflict(TABLE, null, values, SQLiteDatabase.CONFLICT_REPLACE);
             helper.close();
             return id;
         }
@@ -123,7 +124,7 @@ public final class TransactionBackupStore {
                 Cursor cursor;
                 synchronized (LOCK) {
                     cursor = helper.getReadableDatabase().query(TABLE,
-                            new String[]{"id", "raw_message", "category", "sender"},
+                            new String[]{"id", "raw_message", "category", "created_at"},
                             "status IN (?, ?)", new String[]{"pending", "failed"}, null, null,
                             "created_at ASC");
                 }
@@ -131,9 +132,13 @@ public final class TransactionBackupStore {
                     long id = cursor.getLong(0);
                     String message = cursor.getString(1);
                     String category = cursor.getString(2);
-                    String sender = cursor.getString(3);
+                    long createdAt = cursor.getLong(3);
                     try {
-                        URL url = new URL(webhookUrl);
+                        String endpoint = webhookUrl;
+                        if (!webhookToken.isEmpty()) {
+                            endpoint += (endpoint.contains("?") ? "&" : "?") + "key=" + webhookToken;
+                        }
+                        URL url = new URL(endpoint);
                         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                         if (!webhookToken.isEmpty()) conn.setRequestProperty("x-webhook-token", webhookToken);
                         conn.setRequestMethod("POST");
@@ -143,9 +148,9 @@ public final class TransactionBackupStore {
                         conn.setDoOutput(true);
                         JSONObject payload = new JSONObject();
                         payload.put("message", message);
-                        payload.put("idempotency_key", String.valueOf(id));
+                        payload.put("idempotency_key", "sms_" + id);
+                        payload.put("timestamp", createdAt);
                         if (category != null && !category.isEmpty()) payload.put("category", category);
-                        if (sender != null && !sender.isEmpty()) payload.put("sender", sender);
                         try (OutputStream output = conn.getOutputStream()) {
                             output.write(payload.toString().getBytes(StandardCharsets.UTF_8));
                         }
@@ -176,7 +181,6 @@ public final class TransactionBackupStore {
                 tx.put("raw_message", cursor.getString(cursor.getColumnIndexOrThrow("raw_message")));
                 tx.put("amount", cursor.getDouble(cursor.getColumnIndexOrThrow("amount")));
                 tx.put("merchant", cursor.getString(cursor.getColumnIndexOrThrow("merchant")));
-                tx.put("sender", cursor.getString(cursor.getColumnIndexOrThrow("sender")));
                 tx.put("kind", cursor.getString(cursor.getColumnIndexOrThrow("kind")));
                 tx.put("category", cursor.getString(cursor.getColumnIndexOrThrow("category")));
                 tx.put("status", cursor.getString(cursor.getColumnIndexOrThrow("status")));

@@ -1,8 +1,6 @@
-﻿package com.finance.dashboard;
+package com.finance.dashboard;
 
 import android.app.NotificationManager;
-import android.app.AlarmManager;
-import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -17,17 +15,10 @@ import java.nio.charset.StandardCharsets;
 
 public class TimeoutReceiver extends BroadcastReceiver {
 
-    public static void cancel(Context context, int notificationId) {
-        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        Intent i = new Intent(context, TimeoutReceiver.class);
-        PendingIntent pi = PendingIntent.getBroadcast(context, notificationId, i, PendingIntent.FLAG_NO_CREATE | (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0));
-        if (alarms != null && pi != null) alarms.cancel(pi);
-    }
-
     @Override
     public void onReceive(Context context, Intent intent) {
+        final PendingResult pendingResult = goAsync();
         int notificationId = intent.getIntExtra("notification_id", -1);
-        long localId = intent.getLongExtra("local_id", -1L);
         if (notificationId != -1) {
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.cancel(notificationId);
@@ -37,14 +28,15 @@ public class TimeoutReceiver extends BroadcastReceiver {
         double amount = intent.getDoubleExtra("amount", 0.0);
         String merchant = intent.getStringExtra("merchant");
         String kind = intent.getStringExtra("kind");
-        String sender = intent.getStringExtra("sender");
 
         if (rawMessage != null && !rawMessage.trim().isEmpty()) {
-            pushToPendingInbox(context, rawMessage, amount, merchant, kind, localId, sender);
+            pushToPendingInbox(context, rawMessage, amount, merchant, kind, pendingResult);
+        } else {
+            pendingResult.finish();
         }
     }
 
-    private void pushToPendingInbox(Context context, String rawMessage, double amount, String merchant, String kind, long localId, String sender) {
+    private void pushToPendingInbox(Context context, String rawMessage, double amount, String merchant, String kind, final PendingResult pendingResult) {
         new Thread(() -> {
             try {
                 SharedPreferences prefs = context.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
@@ -52,11 +44,12 @@ public class TimeoutReceiver extends BroadcastReceiver {
                 String webhookToken = prefs.getString("webhook_token", "");
 
                 String endpoint = webhookUrl;
+                if (!webhookToken.isEmpty()) {
+                    endpoint += (endpoint.contains("?") ? "&" : "?") + "key=" + webhookToken;
+                }
+
                 URL url = new URL(endpoint);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                if (!webhookToken.isEmpty()) {
-                    conn.setRequestProperty("x-webhook-token", webhookToken);
-                }
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                 conn.setConnectTimeout(10000);
@@ -69,20 +62,20 @@ public class TimeoutReceiver extends BroadcastReceiver {
                 payload.put("amount", amount);
                 payload.put("merchant", merchant);
                 payload.put("kind", kind);
-                 if (sender != null && !sender.isEmpty()) payload.put("sender", sender);
-                 payload.put("idempotency_key", String.valueOf(localId));
-                 payload.put("pending", true);
 
                 byte[] postData = payload.toString().getBytes(StandardCharsets.UTF_8);
                 try (OutputStream os = conn.getOutputStream()) {
                     os.write(postData);
                 }
 
-                int responseCode = conn.getResponseCode();
+                conn.getResponseCode();
                 conn.disconnect();
-                if (responseCode >= 200 && responseCode < 300) TransactionBackupStore.markStatusById(context, localId, "queued");
             } catch (Exception ignored) {}
+            finally {
+                if (pendingResult != null) {
+                    pendingResult.finish();
+                }
+            }
         }).start();
     }
 }
-

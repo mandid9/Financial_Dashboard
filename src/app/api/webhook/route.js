@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { supabase } from '@/lib/supabase';
 import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
@@ -45,16 +45,13 @@ async function resolveUserAndAuthorize(req) {
     }
   } catch (e) {}
 
-  // 3. Fallback to global WEBHOOK_SECRET (Backward-compatible with existing MacroDroid setup)
+  // 3. Fallback to global WEBHOOK_SECRET: Only allowed if WEBHOOK_DEFAULT_USER_ID is set
   const expectedSecret = process.env.WEBHOOK_SECRET;
   if (expectedSecret && secretsMatch(getProvidedSecret(req), expectedSecret)) {
-    const { data: primaryUser } = await supabase
-      .from('user_webhook_tokens')
-      .select('user_id')
-      .limit(1)
-      .maybeSingle();
-
-    return { authorized: true, userId: primaryUser?.user_id || null };
+    const targetUserId = process.env.WEBHOOK_DEFAULT_USER_ID;
+    if (targetUserId) {
+      return { authorized: true, userId: targetUserId };
+    }
   }
 
   return { authorized: false, userId: null };
@@ -86,6 +83,10 @@ export async function POST(req) {
     let customCategory = null;
     let sender = '';
     let idempotencyKey = null;
+    let directAmount = null;
+    let directMerchant = null;
+    let directKind = null;
+    let directNote = null;
 
     try {
       const json = JSON.parse(rawBody);
@@ -98,7 +99,15 @@ export async function POST(req) {
           customCategory = json.category;
         }
         if (json.sender) sender = String(json.sender).slice(0, 160);
-        if (json.idempotency_key) idempotencyKey = String(json.idempotency_key).slice(0, 160);
+        if (json.idempotency_key) {
+          idempotencyKey = String(json.idempotency_key).slice(0, 160);
+        }
+        if (json.amount && Number(json.amount) > 0) {
+          directAmount = Number(json.amount);
+          directMerchant = json.merchant || 'Bank Transaction';
+          directKind = json.kind === 'incoming' ? 'incoming' : 'outgoing';
+          directNote = json.note || 'Bank SMS';
+        }
       }
     } catch (e) {
       if (rawBody.startsWith('body=') || rawBody.startsWith('message=')) {
@@ -108,9 +117,74 @@ export async function POST(req) {
       }
     }
 
-    const now = new Date().toISOString();
+    // Determine accurate transaction timestamp
+    let txDate = new Date().toISOString();
+    try {
+      const parsedJson = JSON.parse(rawBody);
+      if (parsedJson?.timestamp) {
+        const parsedTs = Number(parsedJson.timestamp);
+        if (!isNaN(parsedTs) && parsedTs > 1000000000000) {
+          txDate = new Date(parsedTs).toISOString();
+        } else {
+          const d = new Date(parsedJson.timestamp);
+          if (!isNaN(d.getTime())) txDate = d.toISOString();
+        }
+      }
+    } catch (e) {}
 
-    // Check user-defined custom SMS rules first (if available)
+    // Reject Promotional SMS
+    const isPromo = /عرض خاص|اشحن|احصل على|خصم يصل|لفترة محدودة|كود الخصم|مبروك|وفر مع|استمتع بـ|استمتع بخصم|اشترك الآن|اشترك الان|شحنتك|promo|offer|discount up to|special offer|recharge now|win up to|subscribe now|voucher code|coupon|get free|valid until/i.test(body);
+    if (isPromo) {
+      return new NextResponse('Ignored: Promotional message detected', { status: 200 });
+    }
+
+    // 0. If already parsed by Android Companion App, insert directly with deduplication!
+    if (directAmount && directAmount > 0) {
+      if (directKind === 'incoming') {
+        // Deduplicate incoming within 10 min window
+        const win = 10 * 60000;
+        const { data: recentInc } = await supabase
+          .from('transactions')
+          .select('id, amount, transaction_date')
+          .eq('kind', 'incoming')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (recentInc && recentInc.some(t => Number(t.amount) === Number(directAmount) && Math.abs(new Date(txDate) - new Date(t.transaction_date)) <= win)) {
+          return new NextResponse('Duplicate incoming ignored', { status: 200 });
+        }
+
+        const { error } = await supabase
+          .from('transactions')
+          .insert([{
+            user_id: userId,
+            kind: 'incoming',
+            amount: directAmount,
+            source_or_merchant: directMerchant,
+            note: directNote,
+            transaction_date: txDate
+          }]);
+        if (error) throw error;
+        await sendPushToAll({
+          title: `💰 EGP ${Number(directAmount).toLocaleString()} Income Logged`,
+          body: `${directMerchant}`,
+          icon: '/icon.svg',
+          url: '/index.html'
+        }, userId).catch(() => {});
+        return new NextResponse('Success: Direct income logged', { status: 200 });
+      } else {
+        return await insertOutgoing(directAmount, directMerchant, directNote, txDate, userId, customCategory);
+      }
+    }
+
+    // Normalize Eastern Arabic numerals: ٠-٩ -> 0-9
+    body = body
+      .replace(/٠/g, '0').replace(/١/g, '1').replace(/٢/g, '2')
+      .replace(/٣/g, '3').replace(/٤/g, '4').replace(/٥/g, '5')
+      .replace(/٦/g, '6').replace(/٧/g, '7').replace(/٨/g, '8')
+      .replace(/٩/g, '9').replace(/،/g, ',');
+
+    // Check user-defined custom SMS rules first (Strict sender AND content matching)
     if (userId) {
       const { data: userRules } = await supabase
         .from('user_sms_rules')
@@ -120,28 +194,59 @@ export async function POST(req) {
 
       if (userRules && userRules.length > 0) {
         for (const rule of userRules) {
-          const contentPattern = rule.content_pattern || rule.contains_keyword || '';
-          const senderPattern = rule.sender_pattern || '';
-          const senderMatches = !senderPattern || (sender && sender.toLowerCase().includes(senderPattern.toLowerCase()));
-          if (rule.catch_mode !== 'ignore' && senderMatches && (!contentPattern || body.toLowerCase().includes(contentPattern.toLowerCase()))) {
-            const amtMatch = body.match(/EGP\s*([\d,.]+)/i) || body.match(/([\d,.]+)\s*EGP/i);
+          const contentPattern = (rule.content_pattern || rule.contains_keyword || '').trim().toLowerCase();
+          const senderPattern = (rule.sender_pattern || '').trim().toLowerCase();
+
+          if (!senderPattern && !contentPattern) continue;
+
+          let senderMatches = true;
+          if (senderPattern) {
+            senderMatches = sender ? sender.toLowerCase().includes(senderPattern) : false;
+          }
+
+          let contentMatches = true;
+          if (contentPattern) {
+            contentMatches = body.toLowerCase().includes(contentPattern);
+          }
+
+          if (senderMatches && contentMatches) {
+            if (rule.catch_mode === 'ignore') {
+              return new NextResponse('Ignored by user rule', { status: 200 });
+            }
+
+            const amtMatch = body.match(/(?:EGP|LE|L\.E|ج\.م|جنيه|مبلغ)\s*([\d,.]+)/i) ||
+                             body.match(/([\d,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جنيه)/i) ||
+                             body.match(/amount of\s*([\d,.]+)/i);
             const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : null;
             if (amount && amount > 0) {
               const merchant = rule.merchant_extractor || rule.pattern_name;
+              const kind = rule.direction === 'incoming' ? 'incoming' : 'outgoing';
               if (isPendingQueue) {
-                return await queuePending(body, amount, merchant, 'outgoing', userId, idempotencyKey);
+                return await queuePending(body, amount, merchant, kind, userId, idempotencyKey);
               }
-              return await insertOutgoing(amount, merchant, rule.pattern_name, now, userId, rule.default_category_id);
+              if (kind === 'incoming') {
+                const { error } = await supabase.from('transactions').insert([{
+                  user_id: userId,
+                  kind: 'incoming',
+                  amount: amount,
+                  source_or_merchant: merchant,
+                  note: rule.pattern_name || 'Custom Rule',
+                  transaction_date: txDate
+                }]);
+                if (error) throw error;
+                return new NextResponse('Success: Income logged', { status: 200 });
+              }
+              return await insertOutgoing(amount, merchant, rule.pattern_name, txDate, userId, rule.default_category_id);
             }
           }
         }
       }
     }
 
-    // 1. Salary Deposit (Arabic)
-    if (/اضافة راتبك|إضافة راتبك/i.test(body)) {
+    // 1. Salary Deposit (Arabic & English)
+    if (/اضافة راتبك|إضافة راتبك|تم ايداع الراتب|مرتب|Salary|payroll/i.test(body)) {
       if (isPendingQueue) {
-        const amtMatch = body.match(/بمبلغ\s*([\d,.]+)\s*EGP/i) || body.match(/([\d,.]+)\s*EGP/i);
+        const amtMatch = body.match(/(?:بمبلغ|مبلغ)?\s*([\d,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جنيه)/i);
         const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
         return await queuePending(body, amount, 'Bank Transfer — Salary', 'incoming', userId, idempotencyKey);
       }
@@ -149,55 +254,100 @@ export async function POST(req) {
     }
 
     // 2. Instapay Transfer Sent (Outgoing Expense)
-    if (/IPN transfer sent/i.test(body)) {
-      const amtMatch = body.match(/amount of EGP\s*([\d,.]+)/i) || body.match(/EGP\s*([\d,.]+)/i);
+    if (/IPN transfer sent|تحويل عبر انستاباي/i.test(body)) {
+      const amtMatch = body.match(/(?:amount of\s*)?(?:EGP|LE|ج\.م|جنيه)?\s*([\d,.]+)\s*(?:EGP|LE|ج\.م|جنيه)?/i);
       const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
-      const fromMatch = body.match(/from\s+([^\s]+)/i);
+      const fromMatch = body.match(/(?:from|to|إلى)\s+([^\s,]+)/i);
       const source = `Instapay Sent${fromMatch ? ` (${fromMatch[1]})` : ''}`;
       if (isPendingQueue) return await queuePending(body, amount, source, 'outgoing', userId, idempotencyKey);
       return await handleInstapaySent(body, now, userId, customCategory);
     }
 
     // 3. Instapay Transfer Received (Incoming Income)
-    if (/IPN transfer re(ceived|cieved)/i.test(body)) {
-      const amtMatch = body.match(/amount of EGP\s*([\d,.]+)/i) || body.match(/EGP\s*([\d,.]+)/i);
+    if (/IPN transfer re(ceived|cieved)|استلام تحويل.*انستاباي/i.test(body)) {
+      const amtMatch = body.match(/(?:amount of\s*)?(?:EGP|LE|ج\.م|جنيه)?\s*([\d,.]+)\s*(?:EGP|LE|ج\.م|جنيه)?/i);
       const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
-      const fromMatch = body.match(/from\s+([^\s]+)/i);
+      const fromMatch = body.match(/(?:from|من)\s+([^\s,]+)/i);
       const source = `Instapay Received${fromMatch ? ` from ${fromMatch[1]}` : ''}`;
       if (isPendingQueue) return await queuePending(body, amount, source, 'incoming', userId, idempotencyKey);
       return await handleInstapayReceived(body, now, userId);
     }
 
-    // 4. Debit Card Transaction (Outgoing Expense)
-    if (/Your Debit Card/i.test(body)) {
-      const cardMatch = body.match(/Debit Card\s*([^\s]+)/i);
-      const cardStr = cardMatch ? `Debit Card ${cardMatch[1]}` : 'Debit Card';
-      const amtMatch = body.match(/transaction of EGP\s*([\d,.]+)/i) || body.match(/EGP\s*([\d,.]+)/i);
+    // 4. Card Purchases (NBE, CIB, Banque Misr, QNB, etc.)
+    if (/Your (?:Debit|Credit) Card|تم (?:تنفيذ |إجراء )?حركة|مشتريات|حركة شراء|حركة خصم|تمت معاملة|Purchase (?:of|transaction)|Card (?:ending|used)/i.test(body)) {
+      const amtMatch = body.match(/(?:EGP|LE|L\.E|ج\.م|جنيه|مبلغ|بمبلغ)\s*([\d,.]+)/i) ||
+                       body.match(/([\d,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جنيه)/i) ||
+                       body.match(/transaction of\s*(?:EGP|LE)?\s*([\d,.]+)/i);
       const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
-      const merchMatch = body.match(/@([^,]+),?/);
-      const merchant = merchMatch ? merchMatch[1].trim() : cardStr;
-      if (isPendingQueue) return await queuePending(body, amount, merchant, 'outgoing', userId, idempotencyKey);
-      return await handleDebitCardSms(body, now, userId, customCategory);
+
+      let merchant = 'Bank Card';
+      const merchMatch = body.match(/@([^,.\n]+)/) || body.match(/(?:at|لدى|عند)\s+([^,.\n]+)/i);
+      if (merchMatch) merchant = merchMatch[1].trim();
+
+      if (amount > 0) {
+        if (isPendingQueue) return await queuePending(body, amount, merchant, 'outgoing', userId, idempotencyKey);
+        return await insertOutgoing(amount, merchant, 'Card Purchase', now, userId, customCategory);
+      }
     }
 
-    // 5. Credit Card Transaction (Outgoing Expense / Debt)
-    if (/Your Credit Card/i.test(body)) {
-      const cardMatch = body.match(/Credit Card\s*([^\s]+)/i);
-      const cardStr = cardMatch ? `Credit Card ${cardMatch[1]}` : 'Credit Card';
-      const amtMatch = body.match(/transaction of EGP\s*([\d,.]+)/i) || body.match(/EGP\s*([\d,.]+)/i);
+    // 5. Mobile Wallets (Vodafone Cash, Etisalat, Orange, WE Pay)
+    if (/Vodafone Cash|فودافون كاش|اورنچ كاش|اتصالات كاش|وي باي|تم (?:تحويل|دفع|استلام|خصم) مبلغ/i.test(body)) {
+      const amtMatch = body.match(/(?:مبلغ|بمبلغ|EGP|LE|ج\.م)\s*([\d,.]+)/i) || body.match(/([\d,.]+)\s*(?:ج\.م|EGP|LE)/i);
       const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
-      const merchMatch = body.match(/@([^,]+),?/);
-      const merchant = merchMatch ? merchMatch[1].trim() : cardStr;
-      if (isPendingQueue) return await queuePending(body, amount, merchant, 'outgoing', userId, idempotencyKey);
-      return await handleCreditCardSms(body, now, userId, customCategory);
+      const isIncoming = /استلام|إيداع|received|deposit/i.test(body);
+      const merchant = isIncoming ? 'Wallet Received' : 'Wallet Payment';
+      if (amount > 0) {
+        if (isIncoming) {
+          const { error } = await supabase.from('transactions').insert([{
+            user_id: userId,
+            kind: 'incoming',
+            amount: amount,
+            source_or_merchant: merchant,
+            note: 'Mobile Wallet',
+            transaction_date: now
+          }]);
+          if (error) throw error;
+          return new NextResponse('Success: Wallet incoming logged', { status: 200 });
+        }
+        return await insertOutgoing(amount, merchant, 'Mobile Wallet', now, userId, customCategory);
+      }
     }
 
     // 6. Reversals / Refunds
-    if (/Reversed|Refunded|استرجاع/i.test(body)) {
+    if (/Reversed|Refunded|استرجاع|رد مبلغ/i.test(body)) {
       return await handleReversal(body, now, userId);
     }
 
-    // Strictly ignore all other messages (no noise)
+    // 7. Universal Smart Fallback (Any message with an amount & financial keyword)
+    const genericMatch = body.match(/(?:EGP|LE|L\.E|ج\.م|جنيه|مبلغ|بمبلغ)\s*([\d,.]+)/i) ||
+                         body.match(/([\d,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جنيه)/i);
+    if (genericMatch) {
+      const amount = parseFloat(genericMatch[1].replace(/,/g, ''));
+      const isFinancial = /purchase|payment|spent|transfer|debit|credit|pos|atm|cash|withdraw|invoice|order|paid|bill|wallet|card|خصم|شراء|مشتريات|سحب|دفع|تحويل|بطاقة|كارت|فاتورة|محفظة|معاملة|حركة/i.test(body);
+
+      if (amount > 0 && isFinancial) {
+        const isIncoming = /received|deposit|salary|refund|reversed|cashback|ايداع|إيداع|استلام|اضافة|إضافة|راتب|مرتب|استرجاع|وارد/i.test(body);
+        let merchant = 'Bank Transaction';
+        const merchMatch = body.match(/@([^,.\n]+)/) || body.match(/(?:at|لدى|عند|إلى|to)\s+([^,.\n]+)/i);
+        if (merchMatch) merchant = merchMatch[1].trim();
+
+        if (isIncoming) {
+          const { error } = await supabase.from('transactions').insert([{
+            user_id: userId,
+            kind: 'incoming',
+            amount: amount,
+            source_or_merchant: merchant,
+            note: 'Bank SMS',
+            transaction_date: now
+          }]);
+          if (error) throw error;
+          return new NextResponse('Success: Fallback incoming logged', { status: 200 });
+        }
+        return await insertOutgoing(amount, merchant, 'Bank SMS', now, userId, customCategory);
+      }
+    }
+
+    // Strictly ignore all other non-financial messages
     return new NextResponse('Ignored: No pattern matched', { status: 200 });
   } catch (err) {
     console.error('Webhook Error:', err);
@@ -340,10 +490,10 @@ async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, cate
   const { data: recent } = await query;
 
   if (recent) {
-    const win = 5 * 60000;
+    const win = 10 * 60000;
     const isDup = recent.some(t => {
-      const d = new Date(time) - new Date(t.transaction_date);
-      return Number(t.amount) === Number(amount) && d >= 0 && d <= win;
+      const d = Math.abs(new Date(time) - new Date(t.transaction_date));
+      return Number(t.amount) === Number(amount) && d <= win;
     });
     if (isDup) return new NextResponse('Duplicate ignored', { status: 200 });
   }

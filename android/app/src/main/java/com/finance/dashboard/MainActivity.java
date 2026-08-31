@@ -1,8 +1,9 @@
-﻿package com.finance.dashboard;
+package com.finance.dashboard;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -37,7 +38,25 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.credentials.Credential;
+import androidx.credentials.CredentialManager;
+import androidx.credentials.CredentialManagerCallback;
+import androidx.credentials.CustomCredential;
+import androidx.credentials.GetCredentialRequest;
+import androidx.credentials.GetCredentialResponse;
+import androidx.credentials.exceptions.GetCredentialException;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
+
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,7 +66,9 @@ import org.json.JSONArray;
 public class MainActivity extends AppCompatActivity {
 
     public static final String DASHBOARD_URL = "https://finance-dashboard-next-two.vercel.app/index.html";
+    public static final String GOOGLE_WEB_CLIENT_ID = "772797302426-2temqmh2hhpg060l2lpkt75kbim8o9di.apps.googleusercontent.com";
     private static final int PERMISSION_REQUEST_CODE = 1001;
+    private static final int RC_GOOGLE_SIGN_IN = 9001;
     private static final String TAG = "FinanceMainActivity";
 
     private WebView webView;
@@ -56,6 +77,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isRetrying = false;
     private int retryAttempt = 0;
     private float touchStartY = 0f;
+    private boolean isSessionAuthenticated = false;
 
     @Override
     @SuppressLint("SetJavaScriptEnabled")
@@ -89,8 +111,24 @@ public class MainActivity extends AppCompatActivity {
         setupSwipeRefresh();
         checkAndRequestPermissions();
 
-        retryAttempt = 0;
-        loadDashboard(true);
+        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (webView != null && webView.canGoBack()) {
+                    webView.goBack();
+                } else {
+                    setEnabled(false);
+                    getOnBackPressedDispatcher().onBackPressed();
+                }
+            }
+        });
+
+        if (savedInstanceState == null) {
+            retryAttempt = 0;
+            loadDashboard(true);
+        } else {
+            webView.restoreState(savedInstanceState);
+        }
     }
 
     @Override
@@ -101,7 +139,8 @@ public class MainActivity extends AppCompatActivity {
 
         // 2. Check biometric lock on app open/resume if user enabled it
         SharedPreferences prefs = getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
-        if (prefs.getBoolean("biometric_lock_enabled", false) && isBiometricSupported() && !getPreferences(Context.MODE_PRIVATE).getBoolean("biometric_unlocked", false)) {
+        if (!isSessionAuthenticated && prefs.getBoolean("biometric_lock_enabled", false) && isBiometricSupported()) {
+            webView.setVisibility(android.view.View.INVISIBLE);
             showBiometricPrompt();
         }
     }
@@ -128,9 +167,10 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                     super.onAuthenticationSucceeded(result);
-                    getPreferences(Context.MODE_PRIVATE).edit().putBoolean("biometric_unlocked", true).apply();
                     runOnUiThread(() -> {
+                        isSessionAuthenticated = true;
                         if (webView != null) {
+                            webView.setVisibility(android.view.View.VISIBLE);
                             webView.evaluateJavascript("if (window.onBiometricSuccess) window.onBiometricSuccess();", null);
                         }
                     });
@@ -139,13 +179,77 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
                     super.onAuthenticationError(errorCode, errString);
-                    Log.d(TAG, "Biometric notice: " + errString);
+                    runOnUiThread(() -> {
+                        if (errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON && 
+                            errorCode != BiometricPrompt.ERROR_USER_CANCELED) {
+                            Toast.makeText(MainActivity.this, "Authentication failed", Toast.LENGTH_SHORT).show();
+                        }
+                        finishAffinity();
+                    });
                 }
             });
 
             prompt.authenticate(promptInfo);
         } catch (Exception e) {
             Log.w(TAG, "Biometric prompt error: " + e.getMessage());
+        }
+    }
+
+    public void startNativeGoogleSignIn() {
+        runOnUiThread(() -> {
+            try {
+                GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                        .requestIdToken(GOOGLE_WEB_CLIENT_ID)
+                        .requestEmail()
+                        .build();
+
+                GoogleSignInClient client = GoogleSignIn.getClient(this, gso);
+                Intent signInIntent = client.getSignInIntent();
+                startActivityForResult(signInIntent, RC_GOOGLE_SIGN_IN);
+            } catch (Exception e) {
+                Log.e(TAG, "Google Sign-In initialization error", e);
+                if (webView != null) {
+                    webView.evaluateJavascript("if (window.onAndroidGoogleFallback) window.onAndroidGoogleFallback();", null);
+                }
+            }
+        });
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == RC_GOOGLE_SIGN_IN) {
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            String selectedEmail = "";
+            try {
+                GoogleSignInAccount account = task.getResult(ApiException.class);
+                if (account != null) {
+                    if (account.getEmail() != null) selectedEmail = account.getEmail();
+                    String idToken = account.getIdToken();
+                    if (idToken != null && !idToken.isEmpty()) {
+                        if (webView != null) {
+                            webView.evaluateJavascript("if (window.onAndroidGoogleToken) window.onAndroidGoogleToken(" + JSONObject.quote(idToken) + ");", null);
+                        }
+                        return;
+                    }
+                }
+            } catch (ApiException e) {
+                int statusCode = e.getStatusCode();
+                Log.w(TAG, "Google sign in ApiException: status=" + statusCode + ", msg=" + e.getMessage());
+                if (statusCode == 12501 || statusCode == 16) { // User canceled or in progress
+                    if (webView != null) {
+                        webView.evaluateJavascript("if (window.onAndroidGoogleCancel) window.onAndroidGoogleCancel();", null);
+                    }
+                    return;
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Google sign in general error", e);
+            }
+            // Fallback gracefully to Web OAuth flow passing selected email hint so user doesn't have to type it!
+            final String emailHint = (!selectedEmail.isEmpty()) ? selectedEmail : "kr.wn20@gmail.com";
+            if (webView != null) {
+                webView.evaluateJavascript("if (window.onAndroidGoogleFallback) window.onAndroidGoogleFallback(" + JSONObject.quote(emailHint) + ");", null);
+            }
         }
     }
 
@@ -156,11 +260,9 @@ public class MainActivity extends AppCompatActivity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setNetworkAvailable(true);
-        settings.setNetworkAvailable(true);
+        webView.setNetworkAvailable(true);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
-         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSupportZoom(false);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
@@ -183,8 +285,20 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                String host = request.getUrl().getHost();
-                return host == null || !host.equals("finance-dashboard-next-two.vercel.app");
+                String scheme = request.getUrl().getScheme();
+                // Allow all http/https navigation inside the WebView (needed for Supabase OAuth redirects)
+                if ("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme)) {
+                    return false;
+                }
+                // For non-http schemes (tel:, mailto:, intent:, etc.) launch external handler
+                try {
+                    android.content.Intent intent = new android.content.Intent(
+                        android.content.Intent.ACTION_VIEW, request.getUrl());
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not handle URL scheme: " + request.getUrl());
+                }
+                return true;
             }
 
              @Override
@@ -244,7 +358,11 @@ public class MainActivity extends AppCompatActivity {
         //    - AND touch started within the top header area (Y <= 220px)
         swipeRefresh.setOnChildScrollUpCallback((parent, child) -> {
             boolean isScrolledDown = webView.getScrollY() > 0 || webView.canScrollVertically(-1);
-            boolean isBelowTopHeader = touchStartY > 220f;
+            float headerThresholdPx = android.util.TypedValue.applyDimension(
+                android.util.TypedValue.COMPLEX_UNIT_DIP, 60,
+                getResources().getDisplayMetrics()
+            );
+            boolean isBelowTopHeader = touchStartY > headerThresholdPx;
             return isScrolledDown || isBelowTopHeader;
         });
     }
@@ -273,9 +391,6 @@ public class MainActivity extends AppCompatActivity {
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) != PackageManager.PERMISSION_GRANTED) {
             permissions.add(Manifest.permission.RECEIVE_SMS);
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(Manifest.permission.READ_SMS);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -308,18 +423,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
+    protected void onDestroy() {
+        if (webView != null) {
+            webView.removeJavascriptInterface("AndroidApp");
+            webView.stopLoading();
+            webView.clearHistory();
+            webView.clearCache(true);
+            if (webView.getParent() != null) {
+                ((android.view.ViewGroup) webView.getParent()).removeView(webView);
+            }
+            webView.destroy();
+            webView = null;
         }
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        getPreferences(Context.MODE_PRIVATE).edit().putBoolean("biometric_unlocked", false).apply();
+        super.onDestroy();
     }
 
     @Override
@@ -353,6 +469,12 @@ public class MainActivity extends AppCompatActivity {
                 SharedPreferences prefs = mActivity.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
                 prefs.edit().putString("webhook_token", token.trim()).apply();
             }
+        }
+
+        @JavascriptInterface
+        public void clearUserSession() {
+            SharedPreferences prefs = mActivity.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
+            prefs.edit().remove("webhook_token").remove("custom_sms_rules").apply();
         }
 
         @JavascriptInterface
@@ -451,6 +573,11 @@ public class MainActivity extends AppCompatActivity {
                     mActivity.swipeRefresh.setEnabled(enabled);
                 }
             });
+        }
+
+        @JavascriptInterface
+        public void triggerGoogleSignIn() {
+            mActivity.startNativeGoogleSignIn();
         }
     }
 }

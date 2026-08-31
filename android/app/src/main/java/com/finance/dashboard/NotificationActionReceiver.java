@@ -1,4 +1,4 @@
-﻿package com.finance.dashboard;
+package com.finance.dashboard;
 
 import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
@@ -17,7 +17,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 public class NotificationActionReceiver extends BroadcastReceiver {
-    private static String rawMessageOrEmpty(Intent i) { return i.getStringExtra("raw_message"); }
 
     public static final String DEFAULT_WEBHOOK_URL = "https://finance-dashboard-next-two.vercel.app/api/webhook";
     public static final String ACTION_CONFIRM = "com.finance.dashboard.ACTION_CONFIRM";
@@ -26,30 +25,32 @@ public class NotificationActionReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        final PendingResult pendingResult = goAsync();
         String action = intent.getAction();
         int notificationId = intent.getIntExtra("notification_id", -1);
-        long localId = intent.getLongExtra("local_id", -1L);
 
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm != null && notificationId != -1) nm.cancel(notificationId);
-        if (notificationId != -1) TimeoutReceiver.cancel(context, notificationId);
+        if (nm != null && notificationId != -1) {
+            nm.cancel(notificationId);
+        }
 
         if (ACTION_DISMISS.equals(action)) {
-            TransactionBackupStore.markStatus(context, rawMessageOrEmpty(intent), "dismissed");
+            pendingResult.finish();
             return;
         }
 
         String rawMessage = intent.getStringExtra("raw_message");
         String category = intent.getStringExtra("category");
-        String sender = intent.getStringExtra("sender");
         double amount = intent.getDoubleExtra("amount", 0.0);
 
         if (rawMessage != null && !rawMessage.trim().isEmpty()) {
-            sendWebhookAsync(context, rawMessage, category, amount, localId, sender);
+            sendWebhookAsync(context, rawMessage, category, amount, pendingResult);
+        } else {
+            pendingResult.finish();
         }
     }
 
-    private void sendWebhookAsync(Context context, String rawMessage, String category, double amount, long localId, String sender) {
+    private void sendWebhookAsync(Context context, String rawMessage, String category, double amount, final PendingResult pendingResult) {
         new Thread(() -> {
             try {
                 SharedPreferences prefs = context.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE);
@@ -57,11 +58,12 @@ public class NotificationActionReceiver extends BroadcastReceiver {
                 String webhookToken = prefs.getString("webhook_token", "");
 
                 String endpoint = webhookUrl;
+                if (!webhookToken.isEmpty()) {
+                    endpoint += (endpoint.contains("?") ? "&" : "?") + "key=" + webhookToken;
+                }
+
                 URL url = new URL(endpoint);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                if (!webhookToken.isEmpty()) {
-                    conn.setRequestProperty("x-webhook-token", webhookToken);
-                }
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                 conn.setRequestProperty("Accept", "application/json");
@@ -71,8 +73,6 @@ public class NotificationActionReceiver extends BroadcastReceiver {
 
                 JSONObject payload = new JSONObject();
                 payload.put("message", rawMessage);
-                 if (sender != null && !sender.isEmpty()) payload.put("sender", sender);
-                 payload.put("idempotency_key", String.valueOf(localId));
                 if (category != null && !category.isEmpty()) {
                     payload.put("category", category);
                 }
@@ -87,7 +87,7 @@ public class NotificationActionReceiver extends BroadcastReceiver {
 
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (responseCode >= 200 && responseCode < 300) {
-                        TransactionBackupStore.markStatusById(context, localId, "synced");
+                        TransactionBackupStore.markSynced(context, rawMessage);
                         String msg = category != null
                                 ? "✅ Logged under " + category
                                 : "✅ Transaction logged to Dashboard";
@@ -101,8 +101,11 @@ public class NotificationActionReceiver extends BroadcastReceiver {
                 new Handler(Looper.getMainLooper()).post(() -> {
                     Toast.makeText(context, "Error logging: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
+            } finally {
+                if (pendingResult != null) {
+                    pendingResult.finish();
+                }
             }
         }).start();
     }
 }
-

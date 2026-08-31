@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -55,13 +55,13 @@
 
     /* Light Theme (Clean Silver / Slate High Contrast) */
     [data-theme="light"] {
-      --bg: #f4f6fb;
+      --bg: #f8fafc;
       --bg-surface: #ffffff;
-      --surface: rgba(255, 255, 255, 0.95);
+      --surface: #ffffff;
       --surface-card: #ffffff;
       --surface-hover: #f1f5f9;
-      --surface-border: rgba(0, 0, 0, 0.1);
-      --surface-border-subtle: rgba(0, 0, 0, 0.05);
+      --surface-border: #e2e8f0;
+      --surface-border-subtle: #cbd5e1;
       
       --primary: #4f46e5;
       --primary-hover: #4338ca;
@@ -77,105 +77,143 @@
       --text-secondary: #334155;
       --text-muted: #64748b;
 
-      --shadow-bezel: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 1);
-      --shadow-bezel-hero: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 12px 28px -6px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 1);
+      --shadow-bezel: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+      --shadow-bezel-hero: 0 4px 16px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
     }
     [data-theme="light"] .card, [data-theme="light"] .hub-card {
       background: #ffffff !important;
-      border: 1px solid rgba(0, 0, 0, 0.1) !important;
-      color: #0f172a;
+      border: 1px solid #e2e8f0 !important;
+      color: #0f172a !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     }
     [data-theme="light"] .hero-card {
-      background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
-      border: 1px solid rgba(0, 0, 0, 0.1);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+      border: 1px solid #e2e8f0 !important;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
     }
-    [data-theme="light"] .hero-card h1 { color: #0f172a; }
+    [data-theme="light"] .hero-card h1 { color: #0f172a !important; }
+    [data-theme="light"] .hero-card .income-text {
+      background: #f1f5f9 !important;
+      border: 1px solid #e2e8f0 !important;
+      color: #334155 !important;
+    }
     [data-theme="light"] .bottom-nav {
-      background: rgba(255, 255, 255, 0.92);
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+      background: rgba(255, 255, 255, 0.96) !important;
+      border: 1px solid #e2e8f0 !important;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08) !important;
+    }
+    [data-theme="light"] .nav-btn {
+      color: #64748b !important;
+    }
+    [data-theme="light"] .nav-btn.active {
+      color: #4338ca !important;
+      background: #e0e7ff !important;
+      font-weight: 700 !important;
     }
     [data-theme="light"] .modal {
-      background: #ffffff;
-      color: #0f172a;
+      background: #ffffff !important;
+      border: 1px solid #e2e8f0 !important;
+      color: #0f172a !important;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
     }
     [data-theme="light"] .modal-header {
-      border-bottom-color: rgba(0, 0, 0, 0.08);
+      border-bottom-color: #e2e8f0 !important;
+    }
+    [data-theme="light"] .modal-close {
+      color: #64748b !important;
     }
     [data-theme="light"] input, [data-theme="light"] select, [data-theme="light"] textarea {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      color: #0f172a;
+      background: #ffffff !important;
+      border: 1px solid #cbd5e1 !important;
+      color: #0f172a !important;
     }
     [data-theme="light"] input:focus, [data-theme="light"] select:focus, [data-theme="light"] textarea:focus {
-      background: #ffffff;
-      border-color: #4f46e5;
+      background: #ffffff !important;
+      border-color: #4f46e5 !important;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15) !important;
     }
     [data-theme="light"] .cycle-nav-bar {
-      background: rgba(255, 255, 255, 0.9);
-      border: 1px solid rgba(0, 0, 0, 0.1);
+      background: rgba(255, 255, 255, 0.95) !important;
+      border: 1px solid #e2e8f0 !important;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06) !important;
     }
     [data-theme="light"] .cycle-nav-btn {
-      background: #f1f5f9;
-      border: 1px solid #e2e8f0;
-      color: #1e293b;
+      background: #f1f5f9 !important;
+      border: 1px solid #e2e8f0 !important;
+      color: #1e293b !important;
     }
     [data-theme="light"] .toggle-group {
-      background: #f1f5f9;
-      border: 1px solid #e2e8f0;
+      background: #f1f5f9 !important;
+      border: 1px solid #e2e8f0 !important;
     }
     [data-theme="light"] .toggle-group button {
-      color: #475569;
+      color: #475569 !important;
     }
     [data-theme="light"] .toggle-group button.active {
-      background: #ffffff;
-      color: #0f172a;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      background: #ffffff !important;
+      color: #0f172a !important;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
     }
     [data-theme="light"] button.alt {
-      background: #f1f5f9;
-      color: #1e293b;
-      border: 1px solid #cbd5e1;
+      background: #f1f5f9 !important;
+      color: #1e293b !important;
+      border: 1px solid #cbd5e1 !important;
+      font-weight: 600 !important;
+    }
+    [data-theme="light"] button.primary {
+      background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
+      color: #ffffff !important;
+      border: 1px solid rgba(79, 70, 229, 0.3) !important;
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25) !important;
     }
     [data-theme="light"] .chip {
-      background: #f1f5f9;
-      color: #1e293b;
-      border: 1px solid #cbd5e1;
+      background: #f1f5f9 !important;
+      color: #1e293b !important;
+      border: 1px solid #cbd5e1 !important;
     }
     [data-theme="light"] .chip:hover, [data-theme="light"] .chip:active {
-      background: #e2e8f0;
+      background: #e2e8f0 !important;
     }
     [data-theme="light"] .budget-alert {
-      background: #fff1f2 !important;
-      border: 1px solid #fecdd3 !important;
-      color: #9f1239 !important;
-      font-weight: 600;
+      background: #fef2f2 !important;
+      border: 1px solid #fecaca !important;
+      color: #991b1b !important;
+      font-weight: 600 !important;
     }
     [data-theme="light"] .badge {
-      background: #f1f5f9;
-      color: #334155;
-      border-color: #cbd5e1;
+      background: #f1f5f9 !important;
+      color: #334155 !important;
+      border-color: #cbd5e1 !important;
+      font-weight: 600 !important;
     }
     [data-theme="light"] .badge.blue {
-      background: #eff6ff;
-      color: #1d4ed8;
-      border-color: #bfdbfe;
+      background: #eff6ff !important;
+      color: #1d4ed8 !important;
+      border-color: #bfdbfe !important;
+      font-weight: 600 !important;
     }
     [data-theme="light"] .badge.green {
-      background: #ecfdf5;
-      color: #047857;
-      border-color: #a7f3d0;
+      background: #ecfdf5 !important;
+      color: #047857 !important;
+      border-color: #a7f3d0 !important;
+      font-weight: 600 !important;
     }
     [data-theme="light"] .badge.yellow {
-      background: #fffbeb;
-      color: #b45309;
-      border-color: #fde68a;
+      background: #fffbeb !important;
+      color: #b45309 !important;
+      border-color: #fde68a !important;
+      font-weight: 600 !important;
     }
     [data-theme="light"] .badge.red {
-      background: #fff1f2;
-      color: #be123c;
-      border-color: #fecdd3;
+      background: #fff1f2 !important;
+      color: #be123c !important;
+      border-color: #fecdd3 !important;
+      font-weight: 600 !important;
     }
+    [data-theme="light"] .chart-legend-name { color: #1e293b !important; font-weight: 500; }
+    [data-theme="light"] .chart-legend-val { color: #0f172a !important; font-weight: 700; }
+    [data-theme="light"] .chart-legend-pct { color: #475569 !important; font-weight: 600; }
+    [data-theme="light"] .progress-bg { background: #e2e8f0 !important; }
 
     /* Universal Privacy Mode: Blur all numerical amounts across all pages & modals */
     body.privacy-mode .amount,
@@ -193,12 +231,19 @@
     body.privacy-mode .cat-planned-val,
     body.privacy-mode .cat-actual-val,
     body.privacy-mode .cat-remaining-val,
+    body.privacy-mode .progress-label,
     body.privacy-mode .insights-bar-val,
     body.privacy-mode .insights-metric,
     body.privacy-mode .history-total,
     body.privacy-mode .tx-card .amount,
     body.privacy-mode .tx-card-amount,
-    body.privacy-mode [data-privacy="amount"] {
+    body.privacy-mode #debt-choice-amount,
+    body.privacy-mode #carry-confirm-amount,
+    body.privacy-mode #split-original-amount,
+    body.privacy-mode #split-running-total,
+    body.privacy-mode #split-remaining-amount,
+    body.privacy-mode [data-privacy="amount"],
+    body.privacy-mode [data-privacy-num] {
       filter: blur(8px) !important;
       user-select: none !important;
       transition: filter 180ms ease;
@@ -676,7 +721,7 @@
     .summary-metric { background:var(--surface-hover); border-radius:12px; padding:12px; text-align:center; border:1px solid var(--surface-border); }
     .summary-metric small { display:block; margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); }
     .summary-metric .val { font-size:17px; font-weight:700; font-family:'Geist Mono', monospace; }
-    .variance-row { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-radius:10px; margin-bottom:6px; background:var(--surface); border:1px solid var(--surface-border); }
+    .variance-row { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-radius:10px; margin-bottom:6px; background:var(--surface-hover); border:1px solid var(--surface-border); }
     .variance-row .vr-name { font-weight:600; font-size:13px; }
     .variance-row .vr-detail { font-size:11px; color:var(--text-muted); }
     .variance-row .vr-diff { font-weight:700; font-size:13px; font-family:'Geist Mono', monospace; }
@@ -744,7 +789,7 @@
     .cycle-badge.past { background: rgba(100, 116, 139, 0.15); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.3); }
 
     .cycle-banner {
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(15, 23, 42, 0.6));
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), var(--surface-card));
       border: 1px solid rgba(99, 102, 241, 0.25);
       border-radius: 14px;
       padding: 10px 14px;
@@ -759,7 +804,7 @@
       border-color: rgba(255, 255, 255, 0.08);
     }
     .debt-card {
-      background: linear-gradient(135deg, rgba(244, 63, 94, 0.08), rgba(15, 23, 42, 0.6));
+      background: linear-gradient(135deg, rgba(244, 63, 94, 0.08), var(--surface-card));
       border: 1px solid rgba(244, 63, 94, 0.25);
       border-radius: 14px;
       padding: 14px;
@@ -837,6 +882,49 @@
       transform: scale(0.92);
     }
     .logout-btn { background:transparent; border:none; color:var(--text-muted); padding:4px 0; font-size:11px; }
+
+    .summary-open-btn {
+      background: linear-gradient(135deg, rgba(99,102,241,0.12), var(--surface-card));
+      border: 1px solid rgba(99,102,241,0.25);
+      color: var(--text-primary);
+      border-radius: 12px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 12px;
+      transition: all 0.2s;
+    }
+    .summary-open-btn:hover {
+      background: linear-gradient(135deg, rgba(99,102,241,0.2), var(--surface-hover));
+    }
+
+    #chart-tooltip {
+      background: var(--surface-card);
+      border: 1px solid var(--surface-border);
+      color: var(--text-primary);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13px;
+      pointer-events: none;
+      position: fixed;
+      z-index: 9999;
+      display: none;
+      min-width: 120px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    [data-theme="light"] button:hover {
+      background: #e2e8f0 !important;
+      border-color: #cbd5e1 !important;
+    }
+
+    [data-theme="light"] select {
+      background: var(--surface-hover) !important;
+      color: var(--text-primary) !important;
+      border-color: var(--surface-border) !important;
+    }
   </style>
 </head>
 <body>
@@ -915,7 +1003,7 @@
       <div class="card skeleton skeleton-card"></div>
     </div>
 
-    <button onclick="openSummaryModal()" style="width:100%; margin-bottom:16px; background:linear-gradient(135deg, rgba(99,102,241,0.12), rgba(15,23,42,0.6)); border:1px solid rgba(99,102,241,0.25); border-radius:14px; padding:12px; font-size:13px; font-weight:600; color:var(--text); display:flex; align-items:center; justify-content:center; gap:8px">📊 View Full Summary</button>
+    <button class="summary-open-btn" onclick="openSummaryModal()" style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:16px;">📊 View Full Summary</button>
 
     <div id="home-budget-alerts" class="budget-alert">⚠️ Over Budget Alert: One or more categories have exceeded their planned limit.</div>
 
@@ -942,7 +1030,7 @@
     
     <div style="display:flex; gap:8px; margin-bottom:12px">
       <input type="text" id="history-search" aria-label="Search transactions" placeholder="Search..." autocomplete="off" style="margin-bottom:0; flex:1">
-      <select id="history-group" aria-label="Group transactions" style="margin-bottom:0; width:auto; flex-shrink:0; background:var(--surface); border:1px solid var(--surface-border); color:var(--text); border-radius:12px; padding:8px 12px" onchange="state.historyGroup = this.value; renderHistory()">
+      <select id="history-group" aria-label="Group transactions" style="margin-bottom:0; width:auto; flex-shrink:0; background:var(--surface-hover); border:1px solid var(--surface-border); color:var(--text); border-radius:12px; padding:8px 12px" onchange="state.historyGroup = this.value; renderHistory()">
         <option value="date">By Date</option>
         <option value="category">By Category</option>
         <option value="highest">Highest Value</option>
@@ -990,7 +1078,7 @@
 </div>
 
 <!-- CHART TOOLTIP -->
-<div id="chart-tooltip" style="position:fixed; background:rgba(30, 41, 59, 0.95); border:1px solid var(--surface-border); padding:8px 12px; border-radius:8px; pointer-events:none; opacity:0; transition:opacity 0.2s; z-index:1000; font-size:13px; font-weight:500; box-shadow:0 4px 12px rgba(0,0,0,0.3)"></div>
+<div id="chart-tooltip" style="position:fixed; border:1px solid var(--surface-border); padding:8px 12px; border-radius:8px; pointer-events:none; opacity:0; transition:opacity 0.2s; z-index:1000; font-size:13px; font-weight:500; box-shadow:0 4px 12px rgba(0,0,0,0.3)"></div>
 
 <!-- FAB -->
 <button class="fab" onclick="openManualEntryModal()">+</button>
@@ -1177,7 +1265,7 @@
       <h2>Split Transaction</h2>
       <button class="modal-close" onclick="closeModalForce('modal-split')">&times;</button>
     </div>
-    <p style="margin-bottom:12px">Original: <strong id="split-original-amount"></strong></p>
+    <p style="margin-bottom:12px">Original: <strong id="split-original-amount" class="amount"></strong></p>
     
     <div id="split-parts-container"></div>
     
@@ -1218,7 +1306,7 @@
     <div style="font-size:36px; margin-bottom:8px">💳</div>
     <h2 style="margin-bottom:6px">Debt Transaction</h2>
     <p style="font-size:14px; color:var(--text-secondary); margin-bottom:18px">
-      Amount: <strong id="debt-choice-amount" style="color:var(--text); font-size:16px">EGP 0.00</strong>
+      Amount: <strong id="debt-choice-amount" class="amount" style="color:var(--text); font-size:16px">EGP 0.00</strong>
     </p>
     
     <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px">
@@ -1256,7 +1344,7 @@
       <div style="font-weight:600; font-size:14px; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" id="carry-confirm-source">Transaction</div>
       <div style="font-size:12px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
         <span id="carry-confirm-kind">Outgoing Expense</span>
-        <strong id="carry-confirm-amount" style="color:var(--text); font-size:14px">EGP 0.00</strong>
+        <strong id="carry-confirm-amount" class="amount" style="color:var(--text); font-size:14px">EGP 0.00</strong>
       </div>
     </div>
     
@@ -1330,6 +1418,11 @@ function showLogin(message = '') {
   document.getElementById('app-shell').style.display = 'none';
   document.getElementById('auth-error').textContent = message;
   document.getElementById('login-password').value = '';
+  const btn = document.getElementById('btn-google-login');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '&#128279; Sign in with Google';
+  }
 }
 
 function showApp() {
@@ -1339,12 +1432,84 @@ function showApp() {
 
 function loginWithGoogle() {
   const btn = document.getElementById('btn-google-login');
+  const errorEl = document.getElementById('auth-error');
+  if (errorEl) errorEl.textContent = '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Connecting to Google...';
+  }
+
+  // If inside Android companion app, use native Google Sign-In
+  // The Java onActivityResult handles all outcomes:
+  //   Success → calls onAndroidGoogleToken(idToken)
+  //   No token → calls onAndroidGoogleFallback(emailHint) which redirects to web OAuth
+  //   Cancel  → calls onAndroidGoogleCancel() which re-enables the button
+  if (window.AndroidApp && typeof window.AndroidApp.triggerGoogleSignIn === 'function') {
+    try {
+      window.AndroidApp.triggerGoogleSignIn();
+      return;
+    } catch (e) {
+      console.warn('Android native sign in trigger error:', e);
+    }
+  }
+
+  // Web Browser / Standard OAuth
+  window.location.href = '/api/auth/google';
+}
+
+window.onAndroidGoogleToken = async function(idToken) {
+  const btn = document.getElementById('btn-google-login');
+  const errorEl = document.getElementById('auth-error');
+  if (errorEl) errorEl.textContent = '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Authenticating Google Account...';
+  }
+  try {
+    const res = await fetch('/api/auth/google-id-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_token: idToken })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Native Google Sign-In failed');
+    state.user = data.user || null;
+    updateUserAvatar();
+    showApp();
+    await loadData();
+    initPushNotifications();
+  } catch (err) {
+    console.error('onAndroidGoogleToken error:', err);
+    if (errorEl) errorEl.textContent = err.message || 'Google sign-in error';
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '&#128279; Sign in with Google';
+    }
+  }
+};
+
+window.onAndroidGoogleFallback = function(emailHint) {
+  console.log('Falling back to Google OAuth with hint:', emailHint);
+  const errorEl = document.getElementById('auth-error');
+  if (errorEl) errorEl.textContent = '';
+  const btn = document.getElementById('btn-google-login');
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = 'Connecting to Google...';
   }
-  window.location.href = '/api/auth/google';
-}
+  const hint = emailHint || 'kr.wn20@gmail.com';
+  window.location.href = '/api/auth/google?login_hint=' + encodeURIComponent(hint);
+};
+
+window.onAndroidGoogleCancel = function() {
+  const errorEl = document.getElementById('auth-error');
+  if (errorEl) errorEl.textContent = '';
+  const btn = document.getElementById('btn-google-login');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '&#128279; Sign in with Google';
+  }
+};
 
 async function handleOAuthHashCallback() {
   const hash = window.location.hash;
@@ -1433,6 +1598,16 @@ async function login(event) {
 }
 
 async function logout() {
+  try {
+    localStorage.removeItem('cached_dashboard_data');
+    localStorage.removeItem('custom_sms_rules');
+    sessionStorage.clear();
+    if (window.AndroidApp && typeof window.AndroidApp.clearUserSession === 'function') {
+      window.AndroidApp.clearUserSession();
+    }
+  } catch (e) {}
+  state.dashboard = null;
+  state.budget = null;
   await fetch('/api/auth', { method: 'DELETE' });
   showLogin('You have been signed out.');
 }
@@ -1506,8 +1681,13 @@ async function loadData(silent = false) {
 
     state.cycle = data.cycle;
     if (state.historyAppend && state.dashboard && data.dashboard.history) {
-      data.dashboard.outgoing = [...state.dashboard.outgoing, ...data.dashboard.outgoing];
-      data.dashboard.incoming = [...state.dashboard.incoming, ...data.dashboard.incoming];
+      const mergeDedup = (existing, incoming) => {
+        const seen = new Set((existing || []).map(i => String(i.row)));
+        const fresh = (incoming || []).filter(i => !seen.has(String(i.row)));
+        return [...(existing || []), ...fresh];
+      };
+      data.dashboard.outgoing = mergeDedup(state.dashboard.outgoing, data.dashboard.outgoing);
+      data.dashboard.incoming = mergeDedup(state.dashboard.incoming, data.dashboard.incoming);
     }
     state.dashboard = data.dashboard;
     state.historyAppend = false;
@@ -1677,19 +1857,19 @@ function renderHome() {
   const incEl = document.getElementById('home-hero-subtitle');
   if (c.isCurrent) {
     let sub = '';
-    if (state.dashboard.todayIncome > 0) sub += `+ ${fmt(state.dashboard.todayIncome)} income today \u2022 `;
-    sub += `${fmt(state.dashboard.todayTotal)} spent today`;
-    incEl.textContent = sub;
+    if (state.dashboard.todayIncome > 0) sub += `+ <span class="amount">${fmt(state.dashboard.todayIncome)}</span> income today \u2022 `;
+    sub += `<span class="amount">${fmt(state.dashboard.todayTotal)}</span> spent today`;
+    incEl.innerHTML = sub;
   } else if (c.isNext) {
     const carriedList = state.dashboard.carriedTransactions || [];
     const carriedCount = carriedList.length;
     const carriedSum = carriedList.reduce((s, t) => s + (Number(t.amount) || 0), 0);
     const carriedText = carriedCount === 0 
       ? '0 carried items (EGP 0.00)' 
-      : `${carriedCount} carried item${carriedCount > 1 ? 's' : ''} (${fmt(carriedSum)})`;
-    incEl.textContent = `${carriedText} \u2022 Planned Budget: ${fmt(m.planned)}`;
+      : `${carriedCount} carried item${carriedCount > 1 ? 's' : ''} (<span class="amount">${fmt(carriedSum)}</span>)`;
+    incEl.innerHTML = `${carriedText} \u2022 Planned Budget: <span class="amount">${fmt(m.planned)}</span>`;
   } else {
-    incEl.textContent = `Income: ${fmt(m.income)} \u2022 Spent: ${fmt(m.actual)}`;
+    incEl.innerHTML = `Income: <span class="amount">${fmt(m.income)}</span> \u2022 Spent: <span class="amount">${fmt(m.actual)}</span>`;
   }
   
   // Metrics Grid
@@ -1772,38 +1952,67 @@ function drawChart() {
     cats.push({ name: 'Other', actual: otherTotal });
   }
 
-  // SVG donut with slice group rotated -90, while center text stays in natural upright orientation
-  let svg = `<svg width="180" height="180" viewBox="-1.2 -1.2 2.4 2.4">`;
-  svg += `<g transform="rotate(-90)">`;
+  // Standard SVG Donut with center at (90, 90), outer radius 80, inner radius 52
+  let svg = `<svg width="170" height="170" viewBox="0 0 180 180" style="display:block">`;
   let cumulative = 0;
+  const R = 80;
+  const r = 52;
+  const cx = 90;
+  const cy = 90;
   
   cats.forEach((c, i) => {
     const percent = c.actual / total;
-    const startX = Math.cos(2 * Math.PI * cumulative);
-    const startY = Math.sin(2 * Math.PI * cumulative);
+    const startAngle = 2 * Math.PI * cumulative - Math.PI / 2;
+    const endAngle = 2 * Math.PI * (cumulative + percent) - Math.PI / 2;
     cumulative += percent;
-    const endX = Math.cos(2 * Math.PI * cumulative);
-    const endY = Math.sin(2 * Math.PI * cumulative);
-    const largeArc = percent > 0.5 ? 1 : 0;
+
+    const x1 = cx + R * Math.cos(startAngle);
+    const y1 = cy + R * Math.sin(startAngle);
+    const x2 = cx + R * Math.cos(endAngle);
+    const y2 = cy + R * Math.sin(endAngle);
+
+    const ix1 = cx + r * Math.cos(endAngle);
+    const iy1 = cy + r * Math.sin(endAngle);
+    const ix2 = cx + r * Math.cos(startAngle);
+    const iy2 = cy + r * Math.sin(startAngle);
+
     const color = CHART_COLORS[i % CHART_COLORS.length];
     
-    const pathData = `M ${startX} ${startY} A 1 1 0 ${largeArc} 1 ${endX} ${endY} L ${endX * 0.65} ${endY * 0.65} A 0.65 0.65 0 ${largeArc} 0 ${startX * 0.65} ${startY * 0.65} Z`;
-    svg += `<path d="${pathData}" fill="${color}" stroke="var(--bg)" stroke-width="0.03" style="cursor:pointer; transition:opacity 0.2s"
+    let pathData = '';
+    if (percent >= 0.999) {
+      // Full circle ring
+      const midAngle = startAngle + Math.PI;
+      const mx = cx + R * Math.cos(midAngle);
+      const my = cy + R * Math.sin(midAngle);
+      const imx = cx + r * Math.cos(midAngle);
+      const imy = cy + r * Math.sin(midAngle);
+      pathData = `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${R} ${R} 0 0 1 ${mx.toFixed(2)} ${my.toFixed(2)} A ${R} ${R} 0 0 1 ${x1.toFixed(2)} ${(y1-0.01).toFixed(2)} L ${ix2.toFixed(2)} ${(iy2-0.01).toFixed(2)} A ${r} ${r} 0 0 0 ${imx.toFixed(2)} ${imy.toFixed(2)} A ${r} ${r} 0 0 0 ${ix2.toFixed(2)} ${iy2.toFixed(2)} Z`;
+    } else {
+      const largeArc = percent > 0.5 ? 1 : 0;
+      pathData = `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${R} ${R} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} L ${ix1.toFixed(2)} ${iy1.toFixed(2)} A ${r} ${r} 0 ${largeArc} 0 ${ix2.toFixed(2)} ${iy2.toFixed(2)} Z`;
+    }
+
+    svg += `<path d="${pathData}" fill="${color}" stroke="var(--bg)" stroke-width="2" style="cursor:pointer; transition:opacity 0.2s"
       onclick="showChartTooltip(event, '${esc(c.name)}', ${c.actual})"
       onmouseover="showChartTooltip(event, '${esc(c.name)}', ${c.actual})"
       onmouseout="hideChartTooltip()" 
       onmousemove="moveChartTooltip(event)" />`;
   });
-  svg += `</g>`;
-
-  // Center label (perfect 0deg orientation, unmirrored, with privacy blur support)
-  const isPriv = document.body.classList.contains('privacy-mode');
-  const centerAmount = isPriv ? '••••••' : fmt(total).replace('EGP ','');
-  svg += `<text x="0" y="-0.08" text-anchor="middle" fill="var(--text-muted)" font-size="0.13" font-family="'Plus Jakarta Sans', system-ui, sans-serif">Total</text>`;
-  svg += `<text x="0" y="0.14" text-anchor="middle" fill="var(--text)" font-size="0.22" font-weight="700" font-family="'Geist Mono', monospace" class="chart-center-amount">${centerAmount}</text>`;
   svg += `</svg>`;
 
-  // Legend
+  // Center label in HTML overlay: 100% immune to SVG text mirroring/bidi glitches and natively supports privacy mode blur
+  const centerAmount = fmt(total).replace('EGP ','');
+  const chartWrapper = `
+    <div style="position:relative; width:170px; height:170px; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+      ${svg}
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; text-align:center; user-select:none;">
+        <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); line-height:1.2;">Total</span>
+        <span class="chart-center-amount amount" style="font-size:16px; font-weight:700; font-family:'Geist Mono', monospace; color:var(--text); line-height:1.3; max-width:86px; overflow:hidden; text-overflow:ellipsis;">${centerAmount}</span>
+      </div>
+    </div>
+  `;
+
+  // Legend with high-contrast numerical badges
   let legend = '<div class="chart-legend">';
   cats.forEach((c, i) => {
     const pct = ((c.actual / total) * 100).toFixed(1);
@@ -1817,13 +2026,13 @@ function drawChart() {
   });
   legend += '</div>';
 
-  container.innerHTML = `<div style="flex-shrink:0">${svg}</div>${legend}`;
+  container.innerHTML = `${chartWrapper}${legend}`;
 }
   
 function showChartTooltip(e, name, amount) {
   const tt = document.getElementById('chart-tooltip');
   const safeName = name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  tt.innerHTML = `${safeName}<br><span style="color:var(--danger)">${fmt(amount)}</span>`;
+  tt.innerHTML = `${safeName}<br><span class="amount" style="color:var(--danger)">${fmt(amount)}</span>`;
   tt.style.opacity = 1;
   moveChartTooltip(e);
 }
@@ -1875,30 +2084,30 @@ function renderSummaryReport() {
     <div class="summary-grid">
       <div class="summary-metric">
         <small>💵 Net Balance</small>
-        <div class="val" style="color:${netBalColor}">${fmt(m.netBalance)}</div>
+        <div class="val amount" style="color:${netBalColor}">${fmt(m.netBalance)}</div>
         <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Income \u2212 Actual</div>
       </div>
       <div class="summary-metric">
         <small>🛡️ Available</small>
-        <div class="val" style="color:${availColor}">${fmt(m.available)}</div>
+        <div class="val amount" style="color:${availColor}">${fmt(m.available)}</div>
         <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Planned \u2212 Actual</div>
       </div>
       <div class="summary-metric">
         <small>📈 Planned</small>
-        <div class="val">${fmt(m.planned)}</div>
+        <div class="val amount">${fmt(m.planned)}</div>
       </div>
       <div class="summary-metric">
         <small>📉 Actual Spend</small>
-        <div class="val">${fmt(m.actual)}</div>
+        <div class="val amount">${fmt(m.actual)}</div>
       </div>
       <div class="summary-metric">
         <small>🎯 Commitments</small>
-        <div class="val" style="color:var(--warning)">${fmt(m.commitments)}</div>
+        <div class="val amount" style="color:var(--warning)">${fmt(m.commitments)}</div>
         <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Unpaid remaining</div>
       </div>
       <div class="summary-metric">
         <small>💰 Probable Savings</small>
-        <div class="val" style="color:${saveColor}">${fmt(m.probableSavings)}</div>
+        <div class="val amount" style="color:${saveColor}">${fmt(m.probableSavings)}</div>
         <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Income \u2212 Planned</div>
       </div>
     </div>
@@ -1912,15 +2121,15 @@ function renderSummaryReport() {
       <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
         <div class="flex-row">
           <span>Planned Debt:</span>
-          <strong>${fmt(debt.plannedDebt || 0)}</strong>
+          <strong class="amount">${fmt(debt.plannedDebt || 0)}</strong>
         </div>
         <div class="flex-row">
           <span>Paid Debt (Repayments):</span>
-          <strong style="color:var(--success)">${fmt(debt.paidDebt || 0)}</strong>
+          <strong class="amount" style="color:var(--success)">${fmt(debt.paidDebt || 0)}</strong>
         </div>
         <div class="flex-row" style="border-top:1px solid rgba(255,255,255,0.1); padding-top:6px; margin-top:4px; font-weight:700; color:var(--text)">
           <span>Unpaid Remainder (Eligible at End of Cycle):</span>
-          <span style="color:${(debt.unpaidRemainder||0) > 0 ? 'var(--danger)' : '#4ade80'}; font-size:14px">${fmt(debt.unpaidRemainder || 0)}</span>
+          <span class="amount" style="color:${(debt.unpaidRemainder||0) > 0 ? 'var(--danger)' : '#4ade80'}; font-size:14px">${fmt(debt.unpaidRemainder || 0)}</span>
         </div>
       </div>
     </div>
@@ -1935,13 +2144,13 @@ function renderSummaryReport() {
         <div class="card" style="margin-bottom:16px; padding:12px; background:rgba(99,102,241,0.06); border:1px solid rgba(99,102,241,0.25); border-radius:12px">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
             <strong>${title} (${carried.length})</strong>
-            <span style="font-weight:700; color:#818cf8; font-size:14px">${fmt(carriedSum)}</span>
+            <span class="amount" style="font-weight:700; color:#818cf8; font-size:14px">${fmt(carriedSum)}</span>
           </div>
           <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
             ${carried.map(t => `
               <div class="flex-row">
                 <span>${esc(t.source || 'Expense')} <small style="color:var(--text-muted)">(${t.category || 'Uncategorized'})</small></span>
-                <strong>${fmt(t.amount)}</strong>
+                <strong class="amount">${fmt(t.amount)}</strong>
               </div>
             `).join('')}
           </div>
@@ -1962,9 +2171,9 @@ function renderSummaryReport() {
       <div class="variance-row">
         <div>
           <div class="vr-name">${icon} ${esc(c.name)}</div>
-          <div class="vr-detail">${fmt(c.planned)} planned • ${fmt(c.actual)} spent</div>
+          <div class="vr-detail"><span class="amount">${fmt(c.planned)}</span> planned • <span class="amount">${fmt(c.actual)}</span> spent</div>
         </div>
-        <div class="vr-diff" style="color:${diffColor}">${sign}${fmt(diff)}</div>
+        <div class="vr-diff amount" style="color:${diffColor}">${sign}${fmt(diff)}</div>
       </div>
     `;
   });
@@ -2057,13 +2266,13 @@ function renderHistory() {
   const now = new Date();
   if (state.historyFilter === 'today') {
     const todayStr = now.toDateString();
-    outList = outList.filter(t => parseDateStr(t.date).toDateString() === todayStr);
-    incList = incList.filter(t => parseDateStr(t.date).toDateString() === todayStr);
+    outList = outList.filter(t => parseDateStr(t.timestamp || t.date).toDateString() === todayStr);
+    incList = incList.filter(t => parseDateStr(t.timestamp || t.date).toDateString() === todayStr);
   } else if (state.historyFilter === 'week') {
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - now.getDay());
-    outList = outList.filter(t => parseDateStr(t.date) >= startOfWeek);
-    incList = incList.filter(t => parseDateStr(t.date) >= startOfWeek);
+    outList = outList.filter(t => parseDateStr(t.timestamp || t.date) >= startOfWeek);
+    incList = incList.filter(t => parseDateStr(t.timestamp || t.date) >= startOfWeek);
   } else if (state.historyFilter === 'month') {
     let cm = now.getMonth();
     let cy = now.getFullYear();
@@ -2072,8 +2281,8 @@ function renderHistory() {
       if (cm < 0) { cm = 11; cy -= 1; }
     }
     const startOfMonth = new Date(cy, cm, 20);
-    outList = outList.filter(t => parseDateStr(t.date) >= startOfMonth);
-    incList = incList.filter(t => parseDateStr(t.date) >= startOfMonth);
+    outList = outList.filter(t => parseDateStr(t.timestamp || t.date) >= startOfMonth);
+    incList = incList.filter(t => parseDateStr(t.timestamp || t.date) >= startOfMonth);
   }
   
   const q = state.historySearch.toLowerCase();
@@ -2094,7 +2303,7 @@ function renderHistory() {
     list.forEach(t => {
       let key = 'Other';
       if (state.historyGroup === 'date') {
-        const d = parseDateStr(t.date);
+        const d = parseDateStr(t.timestamp || t.date);
         const today = new Date();
         const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
         if (d.toDateString() === today.toDateString()) key = 'Today';
@@ -2181,7 +2390,7 @@ document.getElementById('history-search').addEventListener('input', (e) => {
     state.historySearch = e.target.value.trim();
     resetHistoryPagination();
     loadData(true);
-  }, 120);
+  }, 400);
 });
 
 document.querySelectorAll('#history-filters .pill').forEach(pill => {
@@ -2318,8 +2527,12 @@ async function reorderCategoriesAfterDrop(fromIdx, toIdx) {
 
 function parseDateStr(str) {
   if (!str) return new Date();
+  if (str instanceof Date) return str;
   const d = new Date(str);
-  return isNaN(d) ? new Date() : d;
+  if (!isNaN(d.getTime())) return d;
+  const d2 = new Date(String(str).replace(' ', 'T'));
+  if (!isNaN(d2.getTime())) return d2;
+  return new Date();
 }
 
 function getCategoryEmoji(catName) {
@@ -2392,11 +2605,11 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
           <div style="font-size:12px; color:var(--text-muted); margin-top:2px; display:flex; gap:4px; align-items:center; flex-wrap:wrap">
             ${badges}
             <span>${catChip}</span>
-            <span style="opacity:0.5">• ${parseDateStr(t.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+            <span style="opacity:0.5">• ${parseDateStr(t.timestamp || t.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
           </div>
         </div>
         <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex-shrink:0">
-          <div style="font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; font-weight:700; font-size:15px; color:${t.kind==='incoming'?'var(--success)':(isRev?'var(--text-muted)':'var(--text)')}">
+          <div class="amount tx-amount" style="font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; font-weight:700; font-size:15px; color:${t.kind==='incoming'?'var(--success)':(isRev?'var(--text-muted)':'var(--text)')}">
             ${fmt(t.amount)}
           </div>
           <div>${pinHtml}</div>
@@ -3364,7 +3577,9 @@ function normalizeSender(s) {
 }
 
 function normalizeSmsRule(rule) {
+  if (!rule) return {};
   const categories = (state.budget && state.budget.categories) || [];
+  const categoryId = rule.categoryId || rule.default_category_id || '';
   const category = rule.category || (categories.find(c => c.id === categoryId) || {}).name || '';
   return {
     id: rule.id || rule.ruleId || '',
@@ -3423,6 +3638,11 @@ function openUserHubModal() {
   const modal = document.getElementById('modal-user-hub');
   if (!modal) return;
   updateBiometricUI();
+
+  // Sync Privacy Mode UI text
+  updatePrivacyUI(document.body.classList.contains('privacy-mode'));
+
+  // Populate dynamic suggested senders from history
   populateSuggestedSendersFromHistory();
   renderCustomSmsRulesList();
   openModal('modal-user-hub');
@@ -3432,14 +3652,40 @@ function populateSuggestedSendersFromHistory() {
   const selectEl = document.getElementById('hub-detected-sender-select');
   const datalistEl = document.getElementById('hub-senders-datalist');
   if (!selectEl) return;
-  const senders = new Map();
-  ['WE Pay', 'FABMISR', 'Fawry', 'Vodafone Cash', 'InstaPay', 'CIB', 'Banque Misr', 'NBE', 'QNB AlAhli', 'Etisalat Cash', 'Orange Cash'].forEach(s => senders.set(s, s));
-  getNativeSmsSenders().forEach(s => senders.set(s, s));
-  getStoredCustomRules().forEach(r => { if (r.senderPattern) senders.set(r.senderPattern, r.senderPattern); });
-  const values = Array.from(senders.values()).sort((a, b) => a.localeCompare(b));
-  selectEl.innerHTML = '<option value="">-- Choose a sender --</option>' + values.map(s => '<option value="' + esc(s) + '">' + esc(s) + '</option>').join('');
+
+  const detectedSenders = new Map();
+  const standardBanks = [
+    'WE Pay', 'FABMISR', 'Fawry', 'Vodafone Cash', 'InstaPay',
+    'CIB', 'Banque Misr', 'NBE', 'QNB AlAhli', 'Etisalat Cash',
+    'Orange Cash', 'Telda', 'AlexBank', 'AAIB', 'HSBC', 'BDC', 'saib', 'EGBank', 'ADIB'
+  ];
+  standardBanks.forEach(s => detectedSenders.set(s, s));
+
+  // Extract from loaded transaction history
+  if (state.dashboard) {
+    const allTx = [...(state.dashboard.outgoing || []), ...(state.dashboard.incoming || [])];
+    allTx.forEach(t => {
+      const src = (t.source || '').trim();
+      if (src && src.length > 1) detectedSenders.set(src, src);
+    });
+  }
+
+  // Extract from native Android app if available
+  getNativeSmsSenders().forEach(s => {
+    if (s && s.length > 1) detectedSenders.set(s, s);
+  });
+
+  // Extract from stored custom rules
+  getStoredCustomRules().forEach(r => {
+    if (r.senderPattern) detectedSenders.set(r.senderPattern, r.senderPattern);
+  });
+
+  const values = Array.from(detectedSenders.values()).sort((a, b) => a.localeCompare(b));
+  selectEl.innerHTML = '<option value="">-- Choose a sender --</option>' +
+    values.map(s => '<option value="' + esc(s) + '">' + esc(s) + '</option>').join('');
   if (datalistEl) datalistEl.innerHTML = values.map(s => '<option value="' + esc(s) + '">').join('');
 }
+
 function getNativeSmsSenders() {
   try {
     if (window.AndroidApp && typeof window.AndroidApp.getRecentSmsSenders === 'function') {
@@ -3449,14 +3695,23 @@ function getNativeSmsSenders() {
   } catch (e) {}
   return [];
 }
+
 function selectSuggestedSender(name) {
   const sender = document.getElementById('hub-rule-sender');
   const selectEl = document.getElementById('hub-detected-sender-select');
   if (sender) sender.value = name || '';
   if (selectEl) selectEl.value = name || '';
 }
-function onSenderDropdownSelected(value) { selectSuggestedSender(value); }
-function onSenderInputChanged() {
+
+function onSenderDropdownSelected(value) {
+  selectSuggestedSender(value);
+}
+
+function onSenderInputChanged(value) {
+  const selectEl = document.getElementById('hub-detected-sender-select');
+  if (selectEl && value !== selectEl.value) {
+    selectEl.value = '';
+  }
   const hint = document.getElementById('hub-sender-fuzzy-hint');
   if (hint) hint.style.display = 'none';
 }
@@ -3511,7 +3766,29 @@ async function deleteCustomSmsRule(ruleId) {
 function renderCustomSmsRulesList() {
   const container = document.getElementById('hub-custom-rules-container'); if (!container) return;
   const rules = getStoredCustomRules();
-  if (!rules.length) { container.innerHTML = '<small style="color:var(--text-muted);display:block;text-align:center;padding:8px">No sender rules saved yet.</small>'; return; }
+  if (!rules.length) {
+    container.innerHTML = '<small style="color:var(--text-muted); display:block; text-align:center; padding:8px">No sender rules saved yet.</small>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:6px">Active Custom Bank Senders (${rules.length}):</div>
+    <div style="display:flex; flex-direction:column; gap:6px">
+      ${rules.map(r => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--surface-card); padding:8px 12px; border-radius:10px; border:1px solid var(--surface-border)">
+          <div>
+            <strong style="font-size:12px; color:var(--text)">${esc(r.name || r.senderPattern)}</strong>
+            <span style="font-size:11px; color:var(--text-muted); margin-left:6px">➔ ${esc(r.category || 'Uncategorized')}</span>
+            <small style="display:block; font-size:10px; color:#38bdf8">Sender match: ${normalizeSender(r.senderPattern || r.contentPattern || '')}</small>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center">
+            <button class="alt" style="font-size:11px; padding:4px 8px" onclick="editCustomSmsRule('${esc(r.id)}')">Edit</button>
+            <button class="alt" style="font-size:11px; padding:4px 8px; color:var(--danger)" onclick="deleteCustomSmsRule('${esc(r.id)}')">Delete</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 function triggerNativeTestFromHub() {
   if (window.AndroidApp && typeof window.AndroidApp.sendNativeTestNotification === 'function') {
