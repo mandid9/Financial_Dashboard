@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { evaluateAndDispatchTriggers } from '@/lib/push';
 import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
@@ -339,6 +339,38 @@ export async function POST(req) {
         const { error } = await delQuery;
         if (error) throw error;
         return NextResponse.json({ success: true });
+      }
+
+      case 'cleanDuplicates': {
+        const { data: allTxs } = await supabase
+          .from('transactions')
+          .select('id, amount, kind, transaction_date')
+          .eq('user_id', userId)
+          .order('transaction_date', { ascending: true });
+
+        const toDelete = [];
+        if (allTxs && allTxs.length > 1) {
+          for (let i = 0; i < allTxs.length; i++) {
+            for (let j = i + 1; j < allTxs.length; j++) {
+              if (toDelete.includes(allTxs[j].id)) continue;
+              if (
+                allTxs[i].kind === allTxs[j].kind &&
+                Math.abs(Number(allTxs[i].amount) - Number(allTxs[j].amount)) < 0.01
+              ) {
+                const diff = Math.abs(new Date(allTxs[i].transaction_date) - new Date(allTxs[j].transaction_date));
+                if (diff <= 24 * 3600 * 1000) {
+                  toDelete.push(allTxs[j].id);
+                }
+              }
+            }
+          }
+        }
+
+        if (toDelete.length > 0) {
+          await supabase.from('transactions').delete().in('id', toDelete);
+        }
+
+        return NextResponse.json({ success: true, removedCount: toDelete.length });
       }
 
       case 'closeBudgetPeriodAndStartFresh': {

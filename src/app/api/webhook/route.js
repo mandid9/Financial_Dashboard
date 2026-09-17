@@ -141,16 +141,24 @@ export async function POST(req) {
     // 0. If already parsed by Android Companion App, insert directly with deduplication!
     if (directAmount && directAmount > 0) {
       if (directKind === 'incoming') {
-        // Deduplicate incoming within 10 min window
-        const win = 10 * 60000;
-        const { data: recentInc } = await supabase
+        // Robust 24-hour deduplication window by amount, kind, and user
+        const txTimeMs = new Date(txDate).getTime();
+        const win = 24 * 3600 * 1000;
+        const minDate = new Date(txTimeMs - win).toISOString();
+        const maxDate = new Date(txTimeMs + win).toISOString();
+
+        const { data: existingInc } = await supabase
           .from('transactions')
           .select('id, amount, transaction_date')
           .eq('kind', 'incoming')
           .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(10);
-        if (recentInc && recentInc.some(t => Number(t.amount) === Number(directAmount) && Math.abs(new Date(txDate) - new Date(t.transaction_date)) <= win)) {
+          .eq('amount', Number(directAmount))
+          .gte('transaction_date', minDate)
+          .lte('transaction_date', maxDate)
+          .limit(1);
+
+        if (existingInc && existingInc.length > 0) {
+          console.log(`[Webhook] Duplicate incoming ignored: ${directAmount} EGP on ${txDate}`);
           return new NextResponse('Duplicate incoming ignored', { status: 200 });
         }
 
@@ -478,24 +486,26 @@ async function handleCreditCardSms(message, time, userId, customCategory) {
 }
 
 async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, categoryId = null) {
-  // Duplicate check (within 5 min window)
+  // Robust 24-hour deduplication window by amount, kind, and user
+  const txTimeMs = new Date(time).getTime();
+  const win = 24 * 3600 * 1000;
+  const minDate = new Date(txTimeMs - win).toISOString();
+  const maxDate = new Date(txTimeMs + win).toISOString();
+
   let query = supabase
     .from('transactions')
     .select('id, amount, transaction_date')
     .eq('kind', 'outgoing')
-    .order('created_at', { ascending: false })
-    .limit(10);
+    .eq('amount', Number(amount))
+    .gte('transaction_date', minDate)
+    .lte('transaction_date', maxDate);
 
   if (userId) query = query.eq('user_id', userId);
-  const { data: recent } = await query;
+  const { data: existingDups } = await query.limit(1);
 
-  if (recent) {
-    const win = 10 * 60000;
-    const isDup = recent.some(t => {
-      const d = Math.abs(new Date(time) - new Date(t.transaction_date));
-      return Number(t.amount) === Number(amount) && d <= win;
-    });
-    if (isDup) return new NextResponse('Duplicate ignored', { status: 200 });
+  if (existingDups && existingDups.length > 0) {
+    console.log(`[Webhook] Duplicate outgoing ignored: ${amount} EGP on ${time}`);
+    return new NextResponse('Duplicate ignored', { status: 200 });
   }
 
   const { error } = await supabase

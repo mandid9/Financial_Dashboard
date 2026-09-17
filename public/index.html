@@ -1205,6 +1205,9 @@
           <button class="alt" style="flex:1" onclick="openSmsScannerModal('offline')">🔄 Sync Offline SQLite</button>
           <button class="alt" style="flex:1" onclick="triggerNativeTestFromHub()">🔔 Test Alert</button>
         </div>
+        <button class="alt" style="width:100%; margin-top:8px; border-color:rgba(239,68,68,0.3); color:var(--text-primary); font-size:12px; padding:8px" onclick="cleanDuplicateTransactionsFromUI()">
+          🧹 Clean Duplicate Transactions
+        </button>
       </div>
     </div>
 
@@ -1242,9 +1245,14 @@
       <div style="background:var(--surface-hover); border:1px solid var(--surface-border); border-radius:10px; padding:12px; font-size:13px; margin-bottom:10px; line-height:1.4">
         Whenever Vercel or your internet was unreachable, the Android companion app stored incoming bank SMS into a local SQLite database and exported a backup to your Downloads folder.
       </div>
-      <button id="btn-sync-offline-sqlite" class="primary" onclick="runSmsScanner()" style="width:100%; padding:10px; font-size:14px; font-weight:600; margin-bottom:8px">
-        🔄 Check & Sync Offline Queue (Android App)
-      </button>
+      <div style="display:flex; gap:8px; margin-bottom:8px">
+        <button id="btn-sync-offline-sqlite" class="primary" onclick="runSmsScanner()" style="flex:2; padding:10px; font-size:13px; font-weight:600">
+          🔄 Check & Sync Offline Queue
+        </button>
+        <button class="alt" onclick="cleanDuplicateTransactionsFromUI()" style="flex:1; padding:10px; font-size:13px; font-weight:600" title="Remove identical transactions created within 24 hours">
+          🧹 Clean Dups
+        </button>
+      </div>
       <label class="btn alt" style="width:100%; box-sizing:border-box; text-align:center; padding:9px 12px; font-size:13px; cursor:pointer; margin:0; display:flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--surface-border); border-radius:10px; background:var(--surface)">
         <span>📂 Load Backup File from Downloads</span>
         <input type="file" id="offline-backup-file-input" accept=".json" style="display:none" onchange="loadBackupFileFromDisk(event)">
@@ -4129,6 +4137,26 @@ function loadBackupFileFromDisk(event) {
   reader.readAsText(file);
 }
 
+async function cleanDuplicateTransactionsFromUI() {
+  if (!confirm('Scan and delete duplicate transactions (same amount and kind within 24 hours)?')) return;
+  try {
+    toast('Cleaning duplicate transactions...', 'info');
+    const res = await api('cleanDuplicates');
+    if (res && res.success) {
+      toast(`✅ Cleaned ${res.removedCount || 0} duplicate transaction(s)!`, 'success');
+      await loadData(true);
+      if (document.getElementById('modal-sms-scanner')?.classList.contains('active')) {
+        runSmsScanner();
+      }
+    } else {
+      toast('No duplicates found or cleanup completed.', 'info');
+    }
+  } catch (err) {
+    console.error('Clean duplicates error:', err);
+    toast(`Failed to clean duplicates: ${err.message}`, 'danger');
+  }
+}
+
 async function runSmsScanner() {
   const btn = document.getElementById('btn-sync-offline-sqlite');
   const resultsContainer = document.getElementById('sms-scan-results-list');
@@ -4143,6 +4171,9 @@ async function runSmsScanner() {
     resultsContainer.innerHTML = '<div style="text-align:center; padding:30px 10px; color:var(--text-muted)"><div class="spinner" style="margin:0 auto 12px"></div>Inspecting local storage...</div>';
   }
 
+  // Yield to browser paint so spinner renders immediately
+  await new Promise(r => setTimeout(r, 60));
+
   let offlineTransactions = [];
   try {
     if (window.AndroidApp && typeof window.AndroidApp.getOfflineBackupTransactions === 'function') {
@@ -4154,20 +4185,20 @@ async function runSmsScanner() {
     }
   } catch (e) {
     console.warn('Could not read offline transactions:', e);
+  } finally {
+    if (btn) btn.disabled = false;
   }
-
-  if (btn) btn.disabled = false;
 
   if (offlineTransactions.length === 0) {
     if (statusContainer) {
-      statusContainer.innerHTML = 'ℹ️ <strong>Offline Queue Empty:</strong> No pending offline transactions stored on device. You can use the <strong>📋 Paste Bank SMS</strong> tab above to parse and reconcile your bank messages directly!';
+      statusContainer.innerHTML = 'ℹ️ <strong>Offline Queue Empty:</strong> No pending offline transactions stored on device. All background SMS broadcasts are up to date! You can also use the <strong>📋 Paste Bank SMS</strong> tab above.';
     }
     if (resultsContainer) {
       resultsContainer.innerHTML = `
         <div style="text-align:center; padding:24px 12px; color:var(--text-muted)">
           <span style="font-size:32px; display:block; margin-bottom:8px">✨</span>
           <p style="margin:0 0 8px; font-weight:600; color:var(--text-primary)">Local SQLite Queue Is Clean</p>
-          <p style="font-size:12px; margin:0 0 12px">All background SMS broadcasts were delivered successfully. To import any missing messages, switch to the <strong>Paste Bank SMS</strong> tab.</p>
+          <p style="font-size:12px; margin:0 0 12px">All bank SMS messages have been synchronized. To parse any missing SMS manually, switch to the <strong>Paste Bank SMS</strong> tab.</p>
           <button class="alt" onclick="switchSmsReconcileTab('paste')">📋 Switch to Paste Bank SMS</button>
         </div>
       `;

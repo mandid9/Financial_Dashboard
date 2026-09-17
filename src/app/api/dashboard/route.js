@@ -39,6 +39,39 @@ export async function GET(req) {
       ]).catch(e => console.warn('Auto-backfill notice:', e.message));
     }
 
+    // Auto-clean any exact duplicate transactions for this user (same amount, same kind, within 24 hours)
+    try {
+      const { data: allUserTxs } = await supabase
+        .from('transactions')
+        .select('id, amount, kind, transaction_date')
+        .eq('user_id', user.id)
+        .order('transaction_date', { ascending: true });
+
+      if (allUserTxs && allUserTxs.length > 1) {
+        const dupIdsToDelete = [];
+        for (let i = 0; i < allUserTxs.length; i++) {
+          for (let j = i + 1; j < allUserTxs.length; j++) {
+            if (dupIdsToDelete.includes(allUserTxs[j].id)) continue;
+            if (
+              allUserTxs[i].kind === allUserTxs[j].kind &&
+              Math.abs(Number(allUserTxs[i].amount) - Number(allUserTxs[j].amount)) < 0.01
+            ) {
+              const diff = Math.abs(new Date(allUserTxs[i].transaction_date) - new Date(allUserTxs[j].transaction_date));
+              if (diff <= 24 * 3600 * 1000) {
+                dupIdsToDelete.push(allUserTxs[j].id);
+              }
+            }
+          }
+        }
+        if (dupIdsToDelete.length > 0) {
+          await supabase.from('transactions').delete().in('id', dupIdsToDelete);
+          console.log(`[Dashboard] Auto-cleaned ${dupIdsToDelete.length} duplicate transactions.`);
+        }
+      }
+    } catch (e) {
+      console.warn('Auto-dedup notice:', e.message);
+    }
+
     // Ensure user has a persistent webhook token
     let userWebhookToken = null;
     try {
