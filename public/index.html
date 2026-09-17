@@ -1025,8 +1025,7 @@
     <div class="filter-pills" id="history-filters">
       <div class="pill" data-filter="today">Today</div>
       <div class="pill" data-filter="week">This Week</div>
-      <div class="pill" data-filter="month">This Month</div>
-      <div class="pill active" data-filter="all">All Cycle</div>
+      <div class="pill active" data-filter="month">This Month</div>
     </div>
     
     <div class="filter-pills" id="history-type-filters" style="margin-bottom:12px; gap:6px;">
@@ -1464,7 +1463,7 @@ const state = {
   expandedCardId: null,
   lastUpdated: null,
   manualType: 'expense',
-  historyFilter: 'all',
+  historyFilter: 'month',
   historySearch: '',
   historyGroup: 'date',
   historyType: 'all',
@@ -1813,7 +1812,7 @@ async function loadData(silent = false) {
     }
 
     // Cache latest state for instant 0ms startup
-    if (state.cycleOffset === 0 && !state.historyFilter && !state.historySearch) {
+    if (state.cycleOffset === 0 && (!state.historyFilter || state.historyFilter === 'month') && !state.historySearch) {
       try {
         localStorage.setItem('cached_dashboard_data', JSON.stringify({
           cycle: data.cycle,
@@ -2596,7 +2595,7 @@ function renderHistory() {
   if (resultsEl) {
     const total = displayList.length;
     let typeLabel = historyType === 'outgoing' ? 'spending' : historyType === 'incoming' ? 'income' : 'transactions';
-    let filterText = state.historyFilter === 'all' ? 'All Cycle' : state.historyFilter.charAt(0).toUpperCase() + state.historyFilter.slice(1);
+    let filterText = state.historyFilter === 'month' ? 'This Month' : state.historyFilter.charAt(0).toUpperCase() + state.historyFilter.slice(1);
     let summaryText = `${total} ${typeLabel}`;
     if (historyType === 'all') {
       summaryText += ` (${outList.length} spending, ${incList.length} income)`;
