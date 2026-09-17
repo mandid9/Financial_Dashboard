@@ -2477,7 +2477,17 @@ function renderHistory() {
   
   const q = state.historySearch.toLowerCase();
   if (q) {
-    const match = t => (t.source||'').toLowerCase().includes(q) || (t.note||'').toLowerCase().includes(q) || String(t.amount).includes(q) || (t.category||'').toLowerCase().includes(q);
+    const cleanQ = q.replace(/,/g, '').trim();
+    const match = t => {
+      const src = (t.source||'').toLowerCase();
+      const note = (t.note||'').toLowerCase();
+      const cat = (t.category||'').toLowerCase();
+      const amtStr = String(t.amount || '');
+      const amtFmt = fmt(t.amount || 0).toLowerCase();
+      return src.includes(q) || note.includes(q) || cat.includes(q) ||
+             amtStr.includes(q) || amtFmt.includes(q) ||
+             (cleanQ && (amtStr.includes(cleanQ) || amtFmt.includes(cleanQ)));
+    };
     outList = outList.filter(match);
     incList = incList.filter(match);
   }

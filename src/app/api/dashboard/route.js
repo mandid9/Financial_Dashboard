@@ -498,9 +498,12 @@ export async function GET(req) {
       filteredHistoryItems = allFormattedHistoryItems;
     }
     if (historySearch) {
+      const cleanSearch = historySearch.replace(/,/g, '').trim();
       filteredHistoryItems = filteredHistoryItems.filter(item => {
-        const haystack = [item.source, item.note, item.category, item.amount].map(value => String(value || '').toLowerCase());
-        return haystack.some(value => value.includes(historySearch));
+        const amtStr = String(item.amount || '');
+        const amtFmt = Number(item.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const haystack = [item.source, item.note, item.category, amtStr, amtFmt].map(value => String(value || '').toLowerCase());
+        return haystack.some(value => value.includes(historySearch) || (cleanSearch && value.includes(cleanSearch)));
       });
     }
     const historyItems = filteredHistoryItems.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
