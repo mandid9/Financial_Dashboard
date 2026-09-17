@@ -177,9 +177,7 @@ export async function POST(req) {
           .update({ is_carried_forward: !!isCarried })
           .eq('id', id);
 
-        if (isOwner) {
-          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
+        if (!isOwner) {
           updateQuery = updateQuery.eq('user_id', userId);
         }
 

@@ -2796,8 +2796,9 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
     pinClass = 'carried-in';
   }
 
+  const txRawTime = t.timestamp || t.date || '';
   const pinSourceEscaped = esc(t.source || 'Transaction').replace(/'/g, "\\'");
-  const pinHtml = `<button class="carry-pin ${pinClass}" title="${pinTitle}" onclick="promptCarryPin(event, ${rowQ}, '${t.kind}', '${pinSourceEscaped}', ${Number(t.amount) || 0}, ${isCarriedIn})">${pinIcon}</button>`;
+  const pinHtml = `<button class="carry-pin ${pinClass}" title="${pinTitle}" onclick="promptCarryPin(event, ${rowQ}, '${t.kind}', '${pinSourceEscaped}', ${Number(t.amount) || 0}, ${isCarriedIn}, '${esc(txRawTime)}')">${pinIcon}</button>`;
 
   return `
     <div class="card tx-card ${isRev ? 'reversed' : ''} ${t.kind}" onclick="toggleExpand('${cid}')" style="padding: 12px; margin-bottom: 8px">
@@ -2826,7 +2827,7 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
   `;
 }
 
-function promptCarryPin(e, row, kind, source, amount, isCarriedIn = false) {
+function promptCarryPin(e, row, kind, source, amount, isCarriedIn = false, txTimestamp = null) {
   e.stopPropagation();
   let willCarry;
   if (isCarriedIn) {
@@ -2836,7 +2837,20 @@ function promptCarryPin(e, row, kind, source, amount, isCarriedIn = false) {
       (state.dashboard && [...(state.dashboard.outgoing || []), ...(state.dashboard.incoming || [])].some(i => String(i.row) === String(row) && i.is_carried_forward));
     willCarry = !isCurrentlyCarried;
   }
-  state.pendingCarry = { row, kind, willCarry, isCarriedIn };
+
+  // Determine if this transaction belongs to a cycle prior to the active current cycle
+  const now = new Date();
+  let cm = now.getMonth();
+  let cy = now.getFullYear();
+  if (now.getDate() < 20) {
+    cm -= 1;
+    if (cm < 0) { cm = 11; cy -= 1; }
+  }
+  const currentCycleStart = new Date(cy, cm, 20);
+  const txDate = txTimestamp ? parseDateStr(txTimestamp) : null;
+  const isFromPastCycle = txDate && txDate < currentCycleStart;
+
+  state.pendingCarry = { row, kind, willCarry, isCarriedIn, isFromPastCycle };
   
   const iconEl = document.getElementById('carry-confirm-icon');
   const titleEl = document.getElementById('carry-confirm-title');
@@ -2853,6 +2867,16 @@ function promptCarryPin(e, row, kind, source, amount, isCarriedIn = false) {
     if (btnEl) {
       btnEl.textContent = '↩️ Revert to Previous Cycle';
       btnEl.className = 'alt';
+    }
+  } else if (isFromPastCycle) {
+    if (iconEl) iconEl.textContent = willCarry ? '📥' : '↩️';
+    if (titleEl) titleEl.textContent = willCarry ? 'Forward into Current Cycle?' : 'Leave in Previous Cycle?';
+    if (descEl) descEl.textContent = willCarry 
+      ? 'This transaction occurred before the current cycle began (before Aug 20). Pinning it will forward it into the current cycle so its amount is counted in this cycle\'s income and balance.' 
+      : 'This will leave this transaction in the previous cycle.';
+    if (btnEl) {
+      btnEl.textContent = willCarry ? '📥 Forward into Current Cycle' : 'Leave in Previous Cycle';
+      btnEl.className = willCarry ? 'primary' : 'alt';
     }
   } else {
     if (iconEl) iconEl.textContent = willCarry ? '📌' : '↩️';
@@ -2878,7 +2902,7 @@ function promptCarryPin(e, row, kind, source, amount, isCarriedIn = false) {
 
 async function confirmCarryPinAction() {
   if (!state.pendingCarry) return;
-  const { row, kind, willCarry, isCarriedIn } = state.pendingCarry;
+  const { row, kind, willCarry, isCarriedIn, isFromPastCycle } = state.pendingCarry;
   closeModalForce('modal-carry-confirm');
   state.pendingCarry = null;
 
@@ -2889,10 +2913,10 @@ async function confirmCarryPinAction() {
     if (!state.carryItems.some(i => String(i.row) === String(row))) {
       state.carryItems.push({ row, kind });
     }
-    toast('📌 Deferred to next cycle', 'success');
+    toast(isFromPastCycle ? '📥 Forwarded into current cycle' : '📌 Deferred to next cycle', 'success');
   } else {
     state.carryItems = state.carryItems.filter(i => !(String(i.row) === String(row) && i.kind === kind));
-    toast('Kept in current cycle', 'info');
+    toast('Kept in cycle', 'info');
   }
   sessionStorage.setItem('carryItems', JSON.stringify(state.carryItems));
   renderAll();
