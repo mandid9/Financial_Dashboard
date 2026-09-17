@@ -1191,19 +1191,18 @@
       <div id="hub-custom-rules-container" style="margin-top:10px"></div>
     </div>
 
-    <!-- 4. OFFLINE BACKUP & DIAGNOSTICS -->
-    <!-- 4. BANK SMS INBOX SCANNER & RECONCILIATION -->
+    <!-- 4. BANK SMS & OFFLINE RECONCILIATION -->
     <div style="margin-bottom:16px;">
-      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">📥 SMS Scanner & Diagnostics</h3>
+      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">📥 SMS & Offline Reconciliation</h3>
       <div class="card hub-card" style="padding:14px; margin-bottom:0">
         <small style="color:var(--text-muted); display:block; margin-bottom:10px; font-size:12px; line-height:1.4">
-          Scan your phone's SMS inbox for bank transactions, compare them with your dashboard history, and import any unrecorded transactions in 1 tap.
+          Reconcile offline SMS cached during network outages or paste bank messages to find and import missing transactions with 1 tap.
         </small>
         <button class="primary" style="width:100%; margin-bottom:8px; display:flex; align-items:center; justify-content:center; gap:8px" onclick="openSmsScannerModal()">
-          <span>🔍</span> <span>Scan Inbox for Missing Transactions</span>
+          <span>🔍</span> <span>Find & Reconcile Missing Transactions</span>
         </button>
         <div class="flex-gap" style="margin-bottom:0">
-          <button class="alt" style="flex:1" onclick="syncOfflineTransactionsFromUI()">🔄 Sync Offline SQLite</button>
+          <button class="alt" style="flex:1" onclick="openSmsScannerModal('offline')">🔄 Sync Offline SQLite</button>
           <button class="alt" style="flex:1" onclick="triggerNativeTestFromHub()">🔔 Test Alert</button>
         </div>
       </div>
@@ -1214,30 +1213,48 @@
   </div>
 </div>
 
-<!-- Bank SMS Scanner & Reconciliation Modal -->
+<!-- Bank SMS & Offline Reconciliation Modal -->
 <div id="modal-sms-scanner" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true" onclick="closeModal(event, 'modal-sms-scanner')">
   <div class="modal" style="max-height:88vh; overflow-y:auto; padding:20px; max-width:540px">
     <div class="modal-header" style="border-bottom:1px solid var(--surface-border); padding-bottom:12px">
       <div style="display:flex; align-items:center; gap:10px">
         <span style="font-size:22px">📥</span>
         <div>
-          <h2 style="margin:0; font-size:16px;">Bank SMS Inbox Scanner</h2>
-          <small style="color:var(--text-muted)">Scan phone SMS & find unrecorded transactions</small>
+          <h2 style="margin:0; font-size:16px;">Missing Transaction Finder</h2>
+          <small style="color:var(--text-muted)">Offline SQLite sync & bank SMS reconciliation</small>
         </div>
       </div>
       <button class="modal-close" onclick="closeModalForce('modal-sms-scanner')">&times;</button>
     </div>
 
-    <!-- Range selection & Scan button -->
-    <div style="margin-top:14px; margin-bottom:14px; display:flex; gap:8px; align-items:center">
-      <select id="sms-scan-range" style="flex:1; padding:8px 10px; font-size:13px">
-        <option value="7">Last 7 Days</option>
-        <option value="14" selected>Last 14 Days</option>
-        <option value="30">Current Cycle (30 Days)</option>
-        <option value="60">Last 60 Days</option>
-      </select>
-      <button id="btn-run-sms-scan" class="primary" onclick="runSmsScanner()" style="padding:8px 16px; font-size:13px; font-weight:600">
-        <span>⚡ Scan Now</span>
+    <!-- Mode Switcher Tabs -->
+    <div style="display:flex; gap:8px; margin-top:14px; margin-bottom:14px;">
+      <button id="tab-sms-offline" class="alt active" onclick="switchSmsReconcileTab('offline')" style="flex:1; font-size:13px; padding:8px 12px; font-weight:600">
+        💾 Offline SQLite Queue
+      </button>
+      <button id="tab-sms-paste" class="alt" onclick="switchSmsReconcileTab('paste')" style="flex:1; font-size:13px; padding:8px 12px; font-weight:600">
+        📋 Paste Bank SMS
+      </button>
+    </div>
+
+    <!-- Mode 1: Offline SQLite Sync -->
+    <div id="section-sms-offline" style="margin-bottom:14px">
+      <div style="background:var(--surface-hover); border:1px solid var(--surface-border); border-radius:10px; padding:12px; font-size:13px; margin-bottom:10px; line-height:1.4">
+        Whenever Vercel or your internet was unreachable, the Android companion app safely stored incoming bank SMS into a local SQLite database. Tap below to inspect and reconcile them against your dashboard history.
+      </div>
+      <button id="btn-sync-offline-sqlite" class="primary" onclick="runSmsScanner()" style="width:100%; padding:10px; font-size:14px; font-weight:600">
+        🔄 Check & Sync Offline Queue
+      </button>
+    </div>
+
+    <!-- Mode 2: Paste Bank SMS -->
+    <div id="section-sms-paste" style="display:none; margin-bottom:14px">
+      <div style="background:var(--surface-hover); border:1px solid var(--surface-border); border-radius:10px; padding:12px; font-size:13px; margin-bottom:10px; line-height:1.4">
+        Paste any bank or wallet SMS (Instapay, CIB, NBE, Vodafone Cash, Fawry, Banque Misr, etc.). You can paste single or multiple messages!
+      </div>
+      <textarea id="paste-sms-input" rows="4" style="width:100%; border:1px solid var(--surface-border); border-radius:10px; background:var(--surface); color:var(--text-primary); padding:10px; font-size:13px; resize:vertical; box-sizing:border-box" placeholder="Paste your bank SMS here (e.g. تم تحويل مبلغ 350.00 EGP إلى ... or Payment of EGP 200.00 at CARREFOUR)..."></textarea>
+      <button id="btn-parse-pasted-sms" class="primary" onclick="parseAndReconcilePastedSms()" style="width:100%; margin-top:8px; padding:10px; font-size:14px; font-weight:600">
+        ⚡ Parse & Find Missing
       </button>
     </div>
 
@@ -1260,8 +1277,8 @@
     <!-- Scanned list results -->
     <div id="sms-scan-results-list" style="display:flex; flex-direction:column; gap:10px">
       <div style="text-align:center; padding:30px 10px; color:var(--text-muted)">
-        <p style="margin:0 0 8px; font-size:14px">Tap <strong>Scan Now</strong> to inspect your bank SMS messages.</p>
-        <small style="font-size:12px; display:block">Detects Instapay, CIB, NBE, Vodafone Cash, Fawry, Banque Misr, and custom rules, comparing every message against your live dashboard history.</small>
+        <p style="margin:0 0 8px; font-size:14px">Select <strong>Offline SQLite Queue</strong> or <strong>Paste Bank SMS</strong> to begin.</p>
+        <small style="font-size:12px; display:block">Zero permissions required. Any missing transactions will be highlighted for 1-tap import.</small>
       </div>
     </div>
   </div>
@@ -3888,135 +3905,143 @@ let scannedSmsList = [];
 let scannedMissingList = [];
 let smsScanActiveFilter = 'missing';
 
-function openSmsScannerModal() {
+function openSmsScannerModal(defaultTab = 'offline') {
   closeModalForce('modal-user-hub');
   openModal('modal-sms-scanner');
-  if (scannedSmsList.length === 0) {
+  switchSmsReconcileTab(defaultTab);
+  if (defaultTab === 'offline' && scannedSmsList.length === 0) {
     runSmsScanner();
   }
 }
 
-async function runSmsScanner() {
-  const btn = document.getElementById('btn-run-sms-scan');
-  const resultsContainer = document.getElementById('sms-scan-results-list');
-  const statusContainer = document.getElementById('sms-scan-status-container');
-  const filtersContainer = document.getElementById('sms-scan-filters');
-  const rangeSelect = document.getElementById('sms-scan-range');
-  const days = rangeSelect ? parseInt(rangeSelect.value, 10) || 14 : 14;
+function switchSmsReconcileTab(tab) {
+  const tabOffline = document.getElementById('tab-sms-offline');
+  const tabPaste = document.getElementById('tab-sms-paste');
+  const secOffline = document.getElementById('section-sms-offline');
+  const secPaste = document.getElementById('section-sms-paste');
 
-  if (btn) btn.disabled = true;
-  if (statusContainer) {
-    statusContainer.style.display = 'block';
-    statusContainer.innerHTML = '⏳ Scanning phone SMS inbox for bank transactions...';
+  if (tab === 'paste') {
+    if (tabOffline) tabOffline.classList.remove('active');
+    if (tabPaste) tabPaste.classList.add('active');
+    if (secOffline) secOffline.style.display = 'none';
+    if (secPaste) secPaste.style.display = 'block';
+  } else {
+    if (tabPaste) tabPaste.classList.remove('active');
+    if (tabOffline) tabOffline.classList.add('active');
+    if (secPaste) secPaste.style.display = 'none';
+    if (secOffline) secOffline.style.display = 'block';
   }
-  if (resultsContainer) {
-    resultsContainer.innerHTML = '<div style="text-align:center; padding:30px 10px; color:var(--text-muted)"><div class="spinner" style="margin:0 auto 12px"></div>Scanning inbox for bank & wallet SMS...</div>';
+}
+
+function parsePastedBankMessage(rawMsg) {
+  if (!rawMsg || !rawMsg.trim()) return null;
+  let msg = rawMsg.trim()
+    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/،/g, ',');
+
+  // Amount extraction
+  let amt = 0;
+  const m1 = msg.match(/(?:EGP|LE|L\.E|ج\.م|جنيه|مبلغ)\s*([\d,.]+)/i);
+  const m2 = msg.match(/([\d,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جنيه)/i);
+  const m3 = msg.match(/(?:بمبلغ|amount of|paid|spent|sent|received|transfer of)\s*([\d,.]+)/i);
+
+  if (m1 && m1[1]) amt = parseFloat(m1[1].replace(/,/g, ''));
+  else if (m2 && m2[1]) amt = parseFloat(m2[1].replace(/,/g, ''));
+  else if (m3 && m3[1]) amt = parseFloat(m3[1].replace(/,/g, ''));
+
+  if (!amt || isNaN(amt) || amt <= 0) return null;
+
+  // Direction (incoming vs outgoing)
+  let kind = 'outgoing';
+  if (/اضافة راتبك|إضافة راتبك|تم ايداع|تم استقبال|استلمت|تحويل وارد|إيداع|ايداع|تم استلام|وارد|received|credited|deposit|incoming|cash in/i.test(msg)) {
+    kind = 'incoming';
   }
 
-  if (!window.AndroidApp || typeof window.AndroidApp.scanInboxBankTransactions !== 'function') {
-    if (btn) btn.disabled = false;
-    if (statusContainer) {
-      statusContainer.innerHTML = 'ℹ️ <strong>Native Scanner:</strong> The SMS scanner runs directly on your phone inside the Android Companion APK. When using the mobile app, it reads and reconciles your SMS inbox automatically.';
-    }
-    if (resultsContainer) {
-      resultsContainer.innerHTML = `
-        <div style="text-align:center; padding:24px 12px; color:var(--text-muted)">
-          <span style="font-size:32px; display:block; margin-bottom:8px">📱</span>
-          <p style="margin:0 0 8px; font-weight:600; color:var(--text-primary)">Open in Financial Dashboard Android App</p>
-          <p style="font-size:12px; margin:0">To automatically scan incoming and past bank SMS messages, open this dashboard inside the native companion APK.</p>
-        </div>
-      `;
-    }
+  // Merchant / Source extraction
+  let merchant = 'Bank Transaction';
+  if (/instapay|انستاباي/i.test(msg)) {
+    const toMatch = msg.match(/(?:إلى|to)\s+([^\d\n,]{2,30})/i);
+    merchant = toMatch ? `Instapay (${toMatch[1].trim()})` : 'Instapay Transfer';
+  } else if (/vodafone|vfcash|فودافون/i.test(msg)) {
+    merchant = 'Vodafone Cash';
+  } else if (/fawry|فوري/i.test(msg)) {
+    merchant = 'Fawry';
+  } else if (/cib/i.test(msg)) {
+    const atMatch = msg.match(/(?:at|لدى|من)\s+([^\d\n,]{2,30})/i);
+    merchant = atMatch ? `CIB - ${atMatch[1].trim()}` : 'CIB Transaction';
+  } else if (/nbe|الأهلي|الاهلي/i.test(msg)) {
+    const atMatch = msg.match(/(?:at|لدى|من)\s+([^\d\n,]{2,30})/i);
+    merchant = atMatch ? `NBE - ${atMatch[1].trim()}` : 'NBE Transaction';
+  } else if (/banque misr|بنك مصر/i.test(msg)) {
+    merchant = 'Banque Misr';
+  } else {
+    const atMatch = msg.match(/(?:at|لدى|من|to|إلى)\s+([^\d\n,]{2,30})/i);
+    if (atMatch) merchant = atMatch[1].trim();
+  }
+
+  return {
+    amount: amt,
+    merchant: merchant,
+    kind: kind,
+    body: rawMsg.trim(),
+    sender: 'Bank SMS',
+    note: 'Pasted SMS Import',
+    date: Date.now(),
+    smsId: 'paste_' + Date.now() + '_' + Math.floor(Math.random() * 100000)
+  };
+}
+
+function parseAndReconcilePastedSms() {
+  const input = document.getElementById('paste-sms-input');
+  const text = input ? input.value.trim() : '';
+  if (!text) {
+    toast('Please paste your bank SMS text first', 'info');
     return;
   }
 
-  try {
-    const rawResult = window.AndroidApp.scanInboxBankTransactions(days);
-    if (!rawResult) throw new Error('No response from native SMS scanner');
+  // Support pasting multiple messages separated by double newline or dashed lines
+  const rawMessages = text.split(/\n\s*[-=_]{3,}\s*\n|\n\s*\n/).filter(t => t.trim().length > 5);
+  if (rawMessages.length === 0) rawMessages.push(text);
 
-    let parsed = JSON.parse(rawResult);
-    if (parsed.error === 'PERMISSION_REQUIRED') {
-      if (btn) btn.disabled = false;
-      if (statusContainer) {
-        statusContainer.innerHTML = '⚠️ <strong>SMS Permission Required:</strong> Please allow SMS access on the Android prompt to scan your bank messages, then tap <strong>Scan Now</strong>.';
-      }
-      if (resultsContainer) {
-        resultsContainer.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted)"><button class="primary" onclick="requestSmsPermissionAndRescan()">Grant SMS Permission & Scan</button></div>';
-      }
-      return;
+  const parsedItems = [];
+  for (const raw of rawMessages) {
+    const item = parsePastedBankMessage(raw);
+    if (item) parsedItems.push(item);
+  }
+
+  if (parsedItems.length === 0) {
+    const lines = text.split('\n').filter(l => /\d/.test(l));
+    for (const line of lines) {
+      const item = parsePastedBankMessage(line);
+      if (item) parsedItems.push(item);
     }
+  }
 
-    if (!Array.isArray(parsed)) {
-      throw new Error(parsed.error || 'Failed to parse SMS messages');
-    }
+  if (parsedItems.length === 0) {
+    toast('Could not find any amounts or bank patterns in pasted text', 'warning');
+    return;
+  }
 
-    let offlineTransactions = [];
-    try {
-      if (typeof window.AndroidApp.getOfflineBackupTransactions === 'function') {
-        const rawOffline = window.AndroidApp.getOfflineBackupTransactions();
-        const parsedOffline = JSON.parse(rawOffline || '[]');
-        if (Array.isArray(parsedOffline)) {
-          offlineTransactions = parsedOffline;
-        }
-      }
-    } catch (e) {
-      console.warn('Could not read offline transactions:', e);
-    }
+  reconcileAndRenderItems(parsedItems, `Parsed ${parsedItems.length} SMS message${parsedItems.length > 1 ? 's' : ''}`);
+}
 
-    let recordedTxs = [];
-    if (state.dashboard) {
-      recordedTxs = [
-        ...(state.dashboard.outgoing || []),
-        ...(state.dashboard.incoming || []),
-        ...(state.dashboard.history || [])
-      ];
-    }
+function reconcileAndRenderItems(newItems, statusMessage = '') {
+  let recordedTxs = [];
+  if (state.dashboard) {
+    recordedTxs = [
+      ...(state.dashboard.outgoing || []),
+      ...(state.dashboard.incoming || []),
+      ...(state.dashboard.history || [])
+    ];
+  }
 
-    const scanned = [];
-    const seenKeys = new Set();
+  const seenKeys = new Set();
+  const pool = [];
 
-    offlineTransactions.forEach(t => {
-      const key = `${t.amount}_${t.created_at || t.timestamp}`;
-      if (!seenKeys.has(key)) {
-        seenKeys.add(key);
-        scanned.push({
-          smsId: t.id,
-          sender: t.sender || t.merchant || 'Offline SQLite',
-          body: t.raw_message || '',
-          amount: Number(t.amount) || 0,
-          merchant: t.merchant || 'Bank Transaction',
-          kind: t.kind || 'outgoing',
-          note: t.note || '',
-          category: t.category || '',
-          date: Number(t.created_at || t.id || Date.now()),
-          isFromSqlite: true,
-          sqliteStatus: t.status
-        });
-      }
-    });
-
-    parsed.forEach(t => {
-      const key = `${t.amount}_${Math.round(t.date / 60000)}`;
-      if (!seenKeys.has(key)) {
-        seenKeys.add(key);
-        scanned.push({
-          smsId: t.smsId,
-          sender: t.sender,
-          body: t.body,
-          amount: Number(t.amount) || 0,
-          merchant: t.merchant,
-          kind: t.kind,
-          note: t.note,
-          category: t.category,
-          date: Number(t.date),
-          isFromSqlite: false
-        });
-      }
-    });
-
-    scanned.sort((a, b) => b.date - a.date);
-
-    scanned.forEach(item => {
+  for (const item of newItems) {
+    const key = `${item.amount}_${Math.round((item.date || Date.now()) / 60000)}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
       let isRecorded = false;
       let matchedTx = null;
 
@@ -4034,55 +4059,100 @@ async function runSmsScanner() {
 
       item.isRecorded = isRecorded;
       item.matchedTx = matchedTx;
-    });
-
-    scannedSmsList = scanned;
-    scannedMissingList = scanned.filter(s => !s.isRecorded);
-
-    if (filtersContainer) filtersContainer.style.display = 'flex';
-    const missingBadge = document.getElementById('sms-missing-count');
-    const totalBadge = document.getElementById('sms-total-count');
-    const importAllBtn = document.getElementById('btn-import-all-missing');
-
-    if (missingBadge) missingBadge.textContent = scannedMissingList.length;
-    if (totalBadge) totalBadge.textContent = scannedSmsList.length;
-    if (importAllBtn) {
-      importAllBtn.style.display = scannedMissingList.length > 0 ? 'inline-block' : 'none';
-      importAllBtn.textContent = `⬇️ Import All (${scannedMissingList.length})`;
+      pool.push(item);
     }
-
-    if (statusContainer) {
-      if (scannedMissingList.length > 0) {
-        statusContainer.style.display = 'block';
-        statusContainer.innerHTML = `⚠️ Found <strong>${scannedSmsList.length}</strong> bank SMS messages. <strong>${scannedMissingList.length} missing transaction${scannedMissingList.length > 1 ? 's' : ''}</strong> detected that are not in your dashboard!`;
-        statusContainer.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-      } else {
-        statusContainer.style.display = 'block';
-        statusContainer.innerHTML = `✅ Found <strong>${scannedSmsList.length}</strong> bank SMS messages. All ${scannedSmsList.length} transactions are already accounted for in your dashboard!`;
-        statusContainer.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-      }
-    }
-
-    filterSmsScanView(scannedMissingList.length > 0 ? 'missing' : 'all');
-  } catch (err) {
-    console.error('Scan error:', err);
-    if (statusContainer) {
-      statusContainer.style.display = 'block';
-      statusContainer.innerHTML = `❌ Error scanning SMS: ${esc(err.message)}`;
-    }
-    if (resultsContainer) {
-      resultsContainer.innerHTML = '<div style="text-align:center; padding:20px; color:var(--danger)">Scan failed. Please retry.</div>';
-    }
-  } finally {
-    if (btn) btn.disabled = false;
   }
+
+  pool.sort((a, b) => (a.isRecorded === b.isRecorded ? (b.date - a.date) : (a.isRecorded ? 1 : -1)));
+
+  scannedSmsList = pool;
+  scannedMissingList = pool.filter(s => !s.isRecorded);
+
+  const statusContainer = document.getElementById('sms-scan-status-container');
+  if (statusContainer) {
+    statusContainer.style.display = 'block';
+    statusContainer.innerHTML = `✅ ${statusMessage}. Found <strong>${scannedMissingList.length}</strong> unrecorded transaction${scannedMissingList.length === 1 ? '' : 's'}.`;
+  }
+
+  const filtersContainer = document.getElementById('sms-scan-filters');
+  if (filtersContainer) filtersContainer.style.display = 'flex';
+
+  const totalBadge = document.getElementById('sms-total-count');
+  if (totalBadge) totalBadge.textContent = scannedSmsList.length;
+
+  const missingBadge = document.getElementById('sms-missing-count');
+  if (missingBadge) missingBadge.textContent = scannedMissingList.length;
+
+  const importAllBtn = document.getElementById('btn-import-all-missing');
+  if (importAllBtn) {
+    importAllBtn.style.display = scannedMissingList.length > 0 ? 'inline-block' : 'none';
+  }
+
+  smsScanActiveFilter = scannedMissingList.length > 0 ? 'missing' : 'all';
+  filterSmsScanView(smsScanActiveFilter);
 }
 
-function requestSmsPermissionAndRescan() {
-  if (window.AndroidApp && typeof window.AndroidApp.requestReadSmsPermission === 'function') {
-    window.AndroidApp.requestReadSmsPermission();
-    setTimeout(() => runSmsScanner(), 1500);
+async function runSmsScanner() {
+  const btn = document.getElementById('btn-sync-offline-sqlite');
+  const resultsContainer = document.getElementById('sms-scan-results-list');
+  const statusContainer = document.getElementById('sms-scan-status-container');
+
+  if (btn) btn.disabled = true;
+  if (statusContainer) {
+    statusContainer.style.display = 'block';
+    statusContainer.innerHTML = '⏳ Checking local offline SQLite queue...';
   }
+  if (resultsContainer) {
+    resultsContainer.innerHTML = '<div style="text-align:center; padding:30px 10px; color:var(--text-muted)"><div class="spinner" style="margin:0 auto 12px"></div>Inspecting local storage...</div>';
+  }
+
+  let offlineTransactions = [];
+  try {
+    if (window.AndroidApp && typeof window.AndroidApp.getOfflineBackupTransactions === 'function') {
+      const rawOffline = window.AndroidApp.getOfflineBackupTransactions();
+      const parsedOffline = JSON.parse(rawOffline || '[]');
+      if (Array.isArray(parsedOffline)) {
+        offlineTransactions = parsedOffline;
+      }
+    }
+  } catch (e) {
+    console.warn('Could not read offline transactions:', e);
+  }
+
+  if (btn) btn.disabled = false;
+
+  if (offlineTransactions.length === 0) {
+    if (statusContainer) {
+      statusContainer.innerHTML = 'ℹ️ <strong>Offline Queue Empty:</strong> No pending offline transactions stored on device. You can use the <strong>📋 Paste Bank SMS</strong> tab above to parse and reconcile your bank messages directly!';
+    }
+    if (resultsContainer) {
+      resultsContainer.innerHTML = `
+        <div style="text-align:center; padding:24px 12px; color:var(--text-muted)">
+          <span style="font-size:32px; display:block; margin-bottom:8px">✨</span>
+          <p style="margin:0 0 8px; font-weight:600; color:var(--text-primary)">Local SQLite Queue Is Clean</p>
+          <p style="font-size:12px; margin:0 0 12px">All background SMS broadcasts were delivered successfully. To import any missing messages, switch to the <strong>Paste Bank SMS</strong> tab.</p>
+          <button class="alt" onclick="switchSmsReconcileTab('paste')">📋 Switch to Paste Bank SMS</button>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  const items = offlineTransactions.map(t => ({
+    smsId: t.id,
+    sender: t.sender || t.merchant || 'Offline SQLite',
+    body: t.raw_message || '',
+    amount: Number(t.amount) || 0,
+    merchant: t.merchant || 'Bank Transaction',
+    kind: t.kind || 'outgoing',
+    note: t.note || 'Offline Cache',
+    category: t.category || '',
+    date: Number(t.created_at || t.id || Date.now()),
+    isFromSqlite: true,
+    sqliteStatus: t.status
+  }));
+
+  reconcileAndRenderItems(items, `Inspected ${items.length} offline records`);
 }
 
 function filterSmsScanView(filter) {

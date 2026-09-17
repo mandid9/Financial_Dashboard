@@ -402,9 +402,6 @@ public class MainActivity extends AppCompatActivity {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) != PackageManager.PERMISSION_GRANTED) {
             permissions.add(Manifest.permission.RECEIVE_SMS);
         }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(Manifest.permission.READ_SMS);
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 permissions.add(Manifest.permission.POST_NOTIFICATIONS);
@@ -497,95 +494,23 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getRecentSmsSenders() {
-            JSONArray result = new JSONArray();
-            Cursor cursor = null;
-            try {
-                cursor = mActivity.getContentResolver().query(Telephony.Sms.CONTENT_URI, new String[]{Telephony.Sms.ADDRESS}, null, null, Telephony.Sms.DATE + " DESC LIMIT 100");
-                java.util.HashSet<String> seen = new java.util.HashSet<>();
-                if (cursor != null) {
-                    int addressIndex = cursor.getColumnIndex(Telephony.Sms.ADDRESS);
-                    while (cursor.moveToNext() && result.length() < 30) {
-                        String address = addressIndex >= 0 ? cursor.getString(addressIndex) : "";
-                        if (address != null && !address.trim().isEmpty() && seen.add(address.trim())) result.put(address.trim());
-                    }
-                }
-            } catch (Exception ignored) {
-            } finally {
-                if (cursor != null) cursor.close();
-            }
-            return result.toString();
+            return "[\"INSTAPAY\",\"CIB\",\"NBE\",\"BANQUEMISR\",\"BDC\",\"QNB\",\"HSBC\",\"VFCASH\",\"ETCASH\",\"ALEXBANK\",\"AAIB\",\"FABMISR\",\"FAWRY\",\"TELDA\",\"WEPAY\"]";
         }
 
         @JavascriptInterface
         public boolean hasReadSmsPermission() {
-            return ContextCompat.checkSelfPermission(mActivity, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED;
+            return false;
         }
 
         @JavascriptInterface
         public void requestReadSmsPermission() {
-            mActivity.runOnUiThread(() -> {
-                ActivityCompat.requestPermissions(mActivity, new String[]{Manifest.permission.READ_SMS}, PERMISSION_REQUEST_CODE);
-            });
+            // Option B: READ_SMS removed to avoid Play Protect false-positive blocks
         }
 
         @JavascriptInterface
         public String scanInboxBankTransactions(int daysBack) {
-            JSONArray matchedTransactions = new JSONArray();
-            if (ContextCompat.checkSelfPermission(mActivity, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
-                mActivity.runOnUiThread(() -> {
-                    ActivityCompat.requestPermissions(mActivity, new String[]{Manifest.permission.READ_SMS}, PERMISSION_REQUEST_CODE);
-                });
-                return "{\"error\":\"PERMISSION_REQUIRED\"}";
-            }
-
-            long cutoff = System.currentTimeMillis() - (daysBack > 0 ? (long) daysBack * 86400000L : 30L * 86400000L);
-            String selection = Telephony.Sms.DATE + " >= ?";
-            String[] selectionArgs = new String[]{String.valueOf(cutoff)};
-            Cursor cursor = null;
-            try {
-                cursor = mActivity.getContentResolver().query(
-                        Telephony.Sms.Inbox.CONTENT_URI,
-                        new String[]{Telephony.Sms._ID, Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE},
-                        selection,
-                        selectionArgs,
-                        Telephony.Sms.DATE + " DESC LIMIT 300"
-                );
-
-                if (cursor != null) {
-                    int addrIdx = cursor.getColumnIndex(Telephony.Sms.ADDRESS);
-                    int bodyIdx = cursor.getColumnIndex(Telephony.Sms.BODY);
-                    int dateIdx = cursor.getColumnIndex(Telephony.Sms.DATE);
-                    int idIdx = cursor.getColumnIndex(Telephony.Sms._ID);
-
-                    while (cursor.moveToNext()) {
-                        String sender = addrIdx >= 0 ? cursor.getString(addrIdx) : "";
-                        String body = bodyIdx >= 0 ? cursor.getString(bodyIdx) : "";
-                        long date = dateIdx >= 0 ? cursor.getLong(dateIdx) : System.currentTimeMillis();
-                        long smsId = idIdx >= 0 ? cursor.getLong(idIdx) : 0;
-
-                        BankParser.ParsedTransaction tx = BankParser.parse(mActivity, sender, body);
-                        if (tx != null && tx.isMatched && tx.amount > 0) {
-                            JSONObject obj = new JSONObject();
-                            obj.put("smsId", smsId);
-                            obj.put("sender", sender != null ? sender : "");
-                            obj.put("body", body);
-                            obj.put("amount", tx.amount);
-                            obj.put("merchant", tx.merchant != null ? tx.merchant : "Bank Transaction");
-                            obj.put("kind", tx.kind != null ? tx.kind : "outgoing");
-                            obj.put("note", tx.note != null ? tx.note : "");
-                            obj.put("category", tx.defaultCategory != null ? tx.defaultCategory : "");
-                            obj.put("date", date);
-                            matchedTransactions.put(obj);
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "SMS inbox scan failed", e);
-                return "{\"error\":\"" + (e.getMessage() != null ? e.getMessage() : "SCAN_FAILED") + "\"}";
-            } finally {
-                if (cursor != null) cursor.close();
-            }
-            return matchedTransactions.toString();
+            // Option B: Returns empty array, relies on offline SQLite cache and direct SMS paste
+            return "[]";
         }
 
         @JavascriptInterface
