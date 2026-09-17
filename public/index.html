@@ -1461,7 +1461,7 @@ const state = {
   historySearch: '',
   historyGroup: 'date',
   historyPage: 1,
-  historyPageSize: 50,
+  historyPageSize: 100,
   historyAppend: false,
   splitRow: null,
   splitOriginal: 0,
@@ -1807,6 +1807,7 @@ async function loadData(silent = false) {
     const lu = document.getElementById('last-updated');
     if (lu) lu.textContent = 'Updated ' + state.lastUpdated.toLocaleTimeString();
     
+    state.isLoading = false;
     renderAll();
     return true;
   } catch(e) {
@@ -1816,6 +1817,12 @@ async function loadData(silent = false) {
     state.isLoading = false;
     const historyResultsEl = document.getElementById('history-results');
     if (historyResultsEl) historyResultsEl.setAttribute('aria-busy', 'false');
+    const loadMoreEl = document.getElementById('history-load-more');
+    if (loadMoreEl && state.dashboard?.history) {
+      loadMoreEl.disabled = false;
+      loadMoreEl.textContent = state.dashboard.history.hasMore ? 'Load more history' : '';
+      loadMoreEl.style.display = state.dashboard.history.hasMore ? 'block' : 'none';
+    }
   }
   return false;
 }
@@ -2179,12 +2186,17 @@ function renderSummaryReport() {
       <div class="summary-metric">
         <small>💵 Net Balance</small>
         <div class="val amount" style="color:${netBalColor}">${fmt(m.netBalance)}</div>
-        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Income \u2212 Actual</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Income − Actual</div>
+      </div>
+      <div class="summary-metric">
+        <small>📥 Total Income</small>
+        <div class="val amount" style="color:var(--success)">+ ${fmt(m.income || 0)}</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">All incoming funds</div>
       </div>
       <div class="summary-metric">
         <small>🛡️ Available</small>
         <div class="val amount" style="color:${availColor}">${fmt(m.available)}</div>
-        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Planned \u2212 Actual</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Planned − Actual</div>
       </div>
       <div class="summary-metric">
         <small>📈 Planned</small>
@@ -2195,14 +2207,19 @@ function renderSummaryReport() {
         <div class="val amount">${fmt(m.actual)}</div>
       </div>
       <div class="summary-metric">
+        <small>💰 Probable Savings</small>
+        <div class="val amount" style="color:${saveColor}">${fmt(m.probableSavings)}</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Income − Planned</div>
+      </div>
+      <div class="summary-metric">
         <small>🎯 Commitments</small>
         <div class="val amount" style="color:var(--warning)">${fmt(m.commitments)}</div>
         <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Unpaid remaining</div>
       </div>
       <div class="summary-metric">
-        <small>💰 Probable Savings</small>
-        <div class="val amount" style="color:${saveColor}">${fmt(m.probableSavings)}</div>
-        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Income \u2212 Planned</div>
+        <small>⏳ Cycle Time</small>
+        <div class="val amount">${m.days ?? 0} <span style="font-size:11px; font-weight:normal">days left</span></div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Until cycle rollover</div>
       </div>
     </div>
 

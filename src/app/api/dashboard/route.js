@@ -12,8 +12,8 @@ export async function GET(req) {
     const cycleOffset = parseInt(searchParams.get('cycleOffset') || '0', 10);
     const requestedHistoryPage = parseInt(searchParams.get('historyPage') || '1', 10);
     const historyPage = Number.isFinite(requestedHistoryPage) ? Math.max(1, requestedHistoryPage) : 1;
-    const requestedHistoryPageSize = parseInt(searchParams.get('historyPageSize') || '50', 10);
-    const historyPageSize = Number.isFinite(requestedHistoryPageSize) ? Math.min(100, Math.max(1, requestedHistoryPageSize)) : 50;
+    const requestedHistoryPageSize = parseInt(searchParams.get('historyPageSize') || '100', 10);
+    const historyPageSize = Number.isFinite(requestedHistoryPageSize) ? Math.min(200, Math.max(1, requestedHistoryPageSize)) : 100;
     const now = new Date();
     const cycleStartDay = 20;
 
@@ -435,10 +435,30 @@ export async function GET(req) {
     const requestedHistoryFilter = searchParams.get('historyFilter') || 'all';
     const historyFilter = ['all', 'today', 'week', 'month'].includes(requestedHistoryFilter) ? requestedHistoryFilter : 'all';
     const historySearch = (searchParams.get('historySearch') || '').trim().toLowerCase();
-    let filteredHistoryItems = [...outgoing, ...incoming];
+    const allFormattedHistoryItems = (allTransactions || []).map(t => {
+      const catName = (t.category_id && catMap[t.category_id])
+        ? catMap[t.category_id].name
+        : (t.categories ? (Array.isArray(t.categories) ? t.categories[0]?.name : t.categories.name) : 'Uncategorized');
+      return {
+        row: t.id,
+        kind: t.kind,
+        source: t.source_or_merchant,
+        date: new Date(t.transaction_date).toLocaleString(),
+        timestamp: t.transaction_date,
+        amount: Number(t.amount),
+        note: t.note,
+        category: catName,
+        is_carried_forward: !!t.is_carried_forward,
+        carried_from_prev: false
+      };
+    });
+
+    let filteredHistoryItems;
     const historyNow = new Date();
-    if (historyFilter === 'today') {
-      filteredHistoryItems = filteredHistoryItems.filter(item => {
+    if (historyFilter === 'all') {
+      filteredHistoryItems = allFormattedHistoryItems;
+    } else if (historyFilter === 'today') {
+      filteredHistoryItems = allFormattedHistoryItems.filter(item => {
         const date = new Date(item.timestamp);
         return date.toDateString() === historyNow.toDateString();
       });
@@ -446,14 +466,11 @@ export async function GET(req) {
       const startOfWeek = new Date(historyNow);
       startOfWeek.setHours(0, 0, 0, 0);
       startOfWeek.setDate(historyNow.getDate() - historyNow.getDay());
-      filteredHistoryItems = filteredHistoryItems.filter(item => new Date(item.timestamp) >= startOfWeek);
+      filteredHistoryItems = allFormattedHistoryItems.filter(item => new Date(item.timestamp) >= startOfWeek);
     } else if (historyFilter === 'month') {
-      let month = historyNow.getMonth();
-      let year = historyNow.getFullYear();
-      if (historyNow.getDate() < 20) month -= 1;
-      if (month < 0) { month = 11; year -= 1; }
-      const startOfMonth = new Date(year, month, 20);
-      filteredHistoryItems = filteredHistoryItems.filter(item => new Date(item.timestamp) >= startOfMonth);
+      filteredHistoryItems = [...outgoing, ...incoming];
+    } else {
+      filteredHistoryItems = allFormattedHistoryItems;
     }
     if (historySearch) {
       filteredHistoryItems = filteredHistoryItems.filter(item => {
