@@ -1192,11 +1192,18 @@
     </div>
 
     <!-- 4. OFFLINE BACKUP & DIAGNOSTICS -->
+    <!-- 4. BANK SMS INBOX SCANNER & RECONCILIATION -->
     <div style="margin-bottom:16px;">
-      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">💾 Local Storage & Diagnostics</h3>
+      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px">📥 SMS Scanner & Diagnostics</h3>
       <div class="card hub-card" style="padding:14px; margin-bottom:0">
-        <div class="flex-gap" style="margin-bottom:8px">
-          <button class="primary" style="flex:1" onclick="syncOfflineTransactionsFromUI()">🔄 Sync Offline SMS</button>
+        <small style="color:var(--text-muted); display:block; margin-bottom:10px; font-size:12px; line-height:1.4">
+          Scan your phone's SMS inbox for bank transactions, compare them with your dashboard history, and import any unrecorded transactions in 1 tap.
+        </small>
+        <button class="primary" style="width:100%; margin-bottom:8px; display:flex; align-items:center; justify-content:center; gap:8px" onclick="openSmsScannerModal()">
+          <span>🔍</span> <span>Scan Inbox for Missing Transactions</span>
+        </button>
+        <div class="flex-gap" style="margin-bottom:0">
+          <button class="alt" style="flex:1" onclick="syncOfflineTransactionsFromUI()">🔄 Sync Offline SQLite</button>
           <button class="alt" style="flex:1" onclick="triggerNativeTestFromHub()">🔔 Test Alert</button>
         </div>
       </div>
@@ -1204,6 +1211,59 @@
 
     <!-- 5. SIGN OUT -->
     <button class="alt" style="width:100%; color:var(--danger); border-color:rgba(239,68,68,0.3); padding:10px" onclick="logout()">Sign Out of Account</button>
+  </div>
+</div>
+
+<!-- Bank SMS Scanner & Reconciliation Modal -->
+<div id="modal-sms-scanner" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true" onclick="closeModal(event, 'modal-sms-scanner')">
+  <div class="modal" style="max-height:88vh; overflow-y:auto; padding:20px; max-width:540px">
+    <div class="modal-header" style="border-bottom:1px solid var(--surface-border); padding-bottom:12px">
+      <div style="display:flex; align-items:center; gap:10px">
+        <span style="font-size:22px">📥</span>
+        <div>
+          <h2 style="margin:0; font-size:16px;">Bank SMS Inbox Scanner</h2>
+          <small style="color:var(--text-muted)">Scan phone SMS & find unrecorded transactions</small>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeModalForce('modal-sms-scanner')">&times;</button>
+    </div>
+
+    <!-- Range selection & Scan button -->
+    <div style="margin-top:14px; margin-bottom:14px; display:flex; gap:8px; align-items:center">
+      <select id="sms-scan-range" style="flex:1; padding:8px 10px; font-size:13px">
+        <option value="7">Last 7 Days</option>
+        <option value="14" selected>Last 14 Days</option>
+        <option value="30">Current Cycle (30 Days)</option>
+        <option value="60">Last 60 Days</option>
+      </select>
+      <button id="btn-run-sms-scan" class="primary" onclick="runSmsScanner()" style="padding:8px 16px; font-size:13px; font-weight:600">
+        <span>⚡ Scan Now</span>
+      </button>
+    </div>
+
+    <!-- Progress / Status container -->
+    <div id="sms-scan-status-container" style="display:none; margin-bottom:12px; padding:12px; border-radius:10px; background:var(--surface-hover); border:1px solid var(--surface-border); font-size:13px; line-height:1.4"></div>
+
+    <!-- Filter pills -->
+    <div id="sms-scan-filters" style="display:none; gap:8px; margin-bottom:14px; align-items:center; flex-wrap:wrap">
+      <button id="sms-filter-missing" class="alt active" onclick="filterSmsScanView('missing')" style="font-size:12px; padding:6px 12px">
+        ⚠️ Missing Only (<span id="sms-missing-count">0</span>)
+      </button>
+      <button id="sms-filter-all" class="alt" onclick="filterSmsScanView('all')" style="font-size:12px; padding:6px 12px">
+        📋 All Detected (<span id="sms-total-count">0</span>)
+      </button>
+      <button id="btn-import-all-missing" class="primary" onclick="importAllMissingTransactions()" style="margin-left:auto; font-size:12px; padding:6px 14px; display:none">
+        ⬇️ Import All Missing
+      </button>
+    </div>
+
+    <!-- Scanned list results -->
+    <div id="sms-scan-results-list" style="display:flex; flex-direction:column; gap:10px">
+      <div style="text-align:center; padding:30px 10px; color:var(--text-muted)">
+        <p style="margin:0 0 8px; font-size:14px">Tap <strong>Scan Now</strong> to inspect your bank SMS messages.</p>
+        <small style="font-size:12px; display:block">Detects Instapay, CIB, NBE, Vodafone Cash, Fawry, Banque Misr, and custom rules, comparing every message against your live dashboard history.</small>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -3822,6 +3882,405 @@ window.onload = async () => {
     initBiometricUI();
   }
 };
+
+// --- Bank SMS Scanner & Reconciliation Engine ---
+let scannedSmsList = [];
+let scannedMissingList = [];
+let smsScanActiveFilter = 'missing';
+
+function openSmsScannerModal() {
+  closeModalForce('modal-user-hub');
+  openModal('modal-sms-scanner');
+  if (scannedSmsList.length === 0) {
+    runSmsScanner();
+  }
+}
+
+async function runSmsScanner() {
+  const btn = document.getElementById('btn-run-sms-scan');
+  const resultsContainer = document.getElementById('sms-scan-results-list');
+  const statusContainer = document.getElementById('sms-scan-status-container');
+  const filtersContainer = document.getElementById('sms-scan-filters');
+  const rangeSelect = document.getElementById('sms-scan-range');
+  const days = rangeSelect ? parseInt(rangeSelect.value, 10) || 14 : 14;
+
+  if (btn) btn.disabled = true;
+  if (statusContainer) {
+    statusContainer.style.display = 'block';
+    statusContainer.innerHTML = '⏳ Scanning phone SMS inbox for bank transactions...';
+  }
+  if (resultsContainer) {
+    resultsContainer.innerHTML = '<div style="text-align:center; padding:30px 10px; color:var(--text-muted)"><div class="spinner" style="margin:0 auto 12px"></div>Scanning inbox for bank & wallet SMS...</div>';
+  }
+
+  if (!window.AndroidApp || typeof window.AndroidApp.scanInboxBankTransactions !== 'function') {
+    if (btn) btn.disabled = false;
+    if (statusContainer) {
+      statusContainer.innerHTML = 'ℹ️ <strong>Native Scanner:</strong> The SMS scanner runs directly on your phone inside the Android Companion APK. When using the mobile app, it reads and reconciles your SMS inbox automatically.';
+    }
+    if (resultsContainer) {
+      resultsContainer.innerHTML = `
+        <div style="text-align:center; padding:24px 12px; color:var(--text-muted)">
+          <span style="font-size:32px; display:block; margin-bottom:8px">📱</span>
+          <p style="margin:0 0 8px; font-weight:600; color:var(--text-primary)">Open in Financial Dashboard Android App</p>
+          <p style="font-size:12px; margin:0">To automatically scan incoming and past bank SMS messages, open this dashboard inside the native companion APK.</p>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  try {
+    const rawResult = window.AndroidApp.scanInboxBankTransactions(days);
+    if (!rawResult) throw new Error('No response from native SMS scanner');
+
+    let parsed = JSON.parse(rawResult);
+    if (parsed.error === 'PERMISSION_REQUIRED') {
+      if (btn) btn.disabled = false;
+      if (statusContainer) {
+        statusContainer.innerHTML = '⚠️ <strong>SMS Permission Required:</strong> Please allow SMS access on the Android prompt to scan your bank messages, then tap <strong>Scan Now</strong>.';
+      }
+      if (resultsContainer) {
+        resultsContainer.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted)"><button class="primary" onclick="requestSmsPermissionAndRescan()">Grant SMS Permission & Scan</button></div>';
+      }
+      return;
+    }
+
+    if (!Array.isArray(parsed)) {
+      throw new Error(parsed.error || 'Failed to parse SMS messages');
+    }
+
+    let offlineTransactions = [];
+    try {
+      if (typeof window.AndroidApp.getOfflineBackupTransactions === 'function') {
+        const rawOffline = window.AndroidApp.getOfflineBackupTransactions();
+        const parsedOffline = JSON.parse(rawOffline || '[]');
+        if (Array.isArray(parsedOffline)) {
+          offlineTransactions = parsedOffline;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not read offline transactions:', e);
+    }
+
+    let recordedTxs = [];
+    if (state.dashboard) {
+      recordedTxs = [
+        ...(state.dashboard.outgoing || []),
+        ...(state.dashboard.incoming || []),
+        ...(state.dashboard.history || [])
+      ];
+    }
+
+    const scanned = [];
+    const seenKeys = new Set();
+
+    offlineTransactions.forEach(t => {
+      const key = `${t.amount}_${t.created_at || t.timestamp}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        scanned.push({
+          smsId: t.id,
+          sender: t.sender || t.merchant || 'Offline SQLite',
+          body: t.raw_message || '',
+          amount: Number(t.amount) || 0,
+          merchant: t.merchant || 'Bank Transaction',
+          kind: t.kind || 'outgoing',
+          note: t.note || '',
+          category: t.category || '',
+          date: Number(t.created_at || t.id || Date.now()),
+          isFromSqlite: true,
+          sqliteStatus: t.status
+        });
+      }
+    });
+
+    parsed.forEach(t => {
+      const key = `${t.amount}_${Math.round(t.date / 60000)}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        scanned.push({
+          smsId: t.smsId,
+          sender: t.sender,
+          body: t.body,
+          amount: Number(t.amount) || 0,
+          merchant: t.merchant,
+          kind: t.kind,
+          note: t.note,
+          category: t.category,
+          date: Number(t.date),
+          isFromSqlite: false
+        });
+      }
+    });
+
+    scanned.sort((a, b) => b.date - a.date);
+
+    scanned.forEach(item => {
+      let isRecorded = false;
+      let matchedTx = null;
+
+      for (const rec of recordedTxs) {
+        const recAmount = Number(rec.amount) || 0;
+        if (Math.abs(recAmount - item.amount) < 0.01) {
+          const recTime = new Date(rec.transaction_date || rec.date || rec.created_at).getTime();
+          if (!isNaN(recTime) && Math.abs(recTime - item.date) < 48 * 3600 * 1000) {
+            isRecorded = true;
+            matchedTx = rec;
+            break;
+          }
+        }
+      }
+
+      item.isRecorded = isRecorded;
+      item.matchedTx = matchedTx;
+    });
+
+    scannedSmsList = scanned;
+    scannedMissingList = scanned.filter(s => !s.isRecorded);
+
+    if (filtersContainer) filtersContainer.style.display = 'flex';
+    const missingBadge = document.getElementById('sms-missing-count');
+    const totalBadge = document.getElementById('sms-total-count');
+    const importAllBtn = document.getElementById('btn-import-all-missing');
+
+    if (missingBadge) missingBadge.textContent = scannedMissingList.length;
+    if (totalBadge) totalBadge.textContent = scannedSmsList.length;
+    if (importAllBtn) {
+      importAllBtn.style.display = scannedMissingList.length > 0 ? 'inline-block' : 'none';
+      importAllBtn.textContent = `⬇️ Import All (${scannedMissingList.length})`;
+    }
+
+    if (statusContainer) {
+      if (scannedMissingList.length > 0) {
+        statusContainer.style.display = 'block';
+        statusContainer.innerHTML = `⚠️ Found <strong>${scannedSmsList.length}</strong> bank SMS messages. <strong>${scannedMissingList.length} missing transaction${scannedMissingList.length > 1 ? 's' : ''}</strong> detected that are not in your dashboard!`;
+        statusContainer.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+      } else {
+        statusContainer.style.display = 'block';
+        statusContainer.innerHTML = `✅ Found <strong>${scannedSmsList.length}</strong> bank SMS messages. All ${scannedSmsList.length} transactions are already accounted for in your dashboard!`;
+        statusContainer.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+      }
+    }
+
+    filterSmsScanView(scannedMissingList.length > 0 ? 'missing' : 'all');
+  } catch (err) {
+    console.error('Scan error:', err);
+    if (statusContainer) {
+      statusContainer.style.display = 'block';
+      statusContainer.innerHTML = `❌ Error scanning SMS: ${esc(err.message)}`;
+    }
+    if (resultsContainer) {
+      resultsContainer.innerHTML = '<div style="text-align:center; padding:20px; color:var(--danger)">Scan failed. Please retry.</div>';
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function requestSmsPermissionAndRescan() {
+  if (window.AndroidApp && typeof window.AndroidApp.requestReadSmsPermission === 'function') {
+    window.AndroidApp.requestReadSmsPermission();
+    setTimeout(() => runSmsScanner(), 1500);
+  }
+}
+
+function filterSmsScanView(filter) {
+  smsScanActiveFilter = filter;
+  const missingBtn = document.getElementById('sms-filter-missing');
+  const allBtn = document.getElementById('sms-filter-all');
+  if (missingBtn) missingBtn.className = filter === 'missing' ? 'alt active' : 'alt';
+  if (allBtn) allBtn.className = filter === 'all' ? 'alt active' : 'alt';
+
+  renderSmsScanResults();
+}
+
+function renderSmsScanResults() {
+  const container = document.getElementById('sms-scan-results-list');
+  if (!container) return;
+
+  const items = smsScanActiveFilter === 'missing' ? scannedMissingList : scannedSmsList;
+
+  if (items.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center; padding:30px 10px; color:var(--text-muted)">
+        <span style="font-size:28px; display:block; margin-bottom:8px">🎉</span>
+        <p style="margin:0; font-size:14px; color:var(--text-primary); font-weight:600">
+          ${smsScanActiveFilter === 'missing' ? 'No missing transactions found!' : 'No bank transactions detected in this timeframe.'}
+        </p>
+        <small style="font-size:12px; color:var(--text-muted)">All bank messages match your history.</small>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = items.map((item, idx) => {
+    const d = new Date(item.date);
+    const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isOut = item.kind === 'outgoing';
+    const sign = isOut ? '-' : '+';
+    const color = isOut ? 'var(--danger)' : 'var(--success)';
+    const statusBadge = item.isRecorded
+      ? '<span class="badge" style="background:rgba(16,185,129,0.15); color:var(--success)">✓ Recorded</span>'
+      : '<span class="badge" style="background:rgba(239,68,68,0.15); color:var(--danger)">⚠️ Missing</span>';
+
+    const sourceTag = item.isFromSqlite ? ' <span style="font-size:10px; color:var(--primary); font-weight:600">[Offline DB]</span>' : '';
+
+    return `
+      <div class="card" style="padding:12px 14px; margin-bottom:0; display:flex; flex-direction:column; gap:8px; border:1px solid ${item.isRecorded ? 'var(--surface-border)' : 'rgba(239,68,68,0.3)'}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start">
+          <div>
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px">
+              <strong style="font-size:14px">${esc(item.merchant || item.sender)}</strong>
+              ${statusBadge}
+              ${sourceTag}
+            </div>
+            <small style="color:var(--text-muted); font-size:11px">${esc(item.sender)} • ${dateStr}</small>
+          </div>
+          <div style="text-align:right">
+            <span class="amount" style="font-size:15px; font-weight:700; color:${color}">
+              ${sign} ${fmt(item.amount)}
+            </span>
+          </div>
+        </div>
+        ${item.body ? `<div style="font-size:11px; color:var(--text-secondary); background:var(--surface-hover); padding:6px 8px; border-radius:6px; max-height:48px; overflow-y:auto; line-height:1.3">${esc(item.body)}</div>` : ''}
+        ${!item.isRecorded ? `
+          <div style="display:flex; justify-content:flex-end; margin-top:2px">
+            <button class="primary" style="padding:5px 12px; font-size:12px" onclick="importSingleScannedTransaction(${idx}, event)">
+              ⬇️ Import to Dashboard
+            </button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+async function importSingleScannedTransaction(idx, evt) {
+  const items = smsScanActiveFilter === 'missing' ? scannedMissingList : scannedSmsList;
+  const item = items[idx];
+  if (!item) return;
+
+  const btn = evt ? evt.target : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Importing...';
+  }
+
+  try {
+    const payload = {
+      message: item.body || `${item.merchant} transaction of ${item.amount}`,
+      amount: item.amount,
+      merchant: item.merchant || 'Bank Transaction',
+      kind: item.kind || 'outgoing',
+      note: item.note || 'Imported from SMS Scan',
+      sender: item.sender || '',
+      timestamp: item.date,
+      idempotency_key: 'import_' + (item.smsId || item.date)
+    };
+
+    const webhookToken = (window.AndroidApp && typeof window.AndroidApp.getWebhookToken === 'function')
+      ? window.AndroidApp.getWebhookToken()
+      : (state.webhookToken || '');
+
+    let url = '/api/webhook';
+    if (webhookToken) {
+      url += '?key=' + encodeURIComponent(webhookToken);
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(webhookToken ? { 'x-webhook-token': webhookToken } : {})
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`HTTP ${res.status}: ${txt}`);
+    }
+
+    item.isRecorded = true;
+    scannedMissingList = scannedSmsList.filter(s => !s.isRecorded);
+
+    const missingBadge = document.getElementById('sms-missing-count');
+    if (missingBadge) missingBadge.textContent = scannedMissingList.length;
+
+    toast(`✅ Imported ${fmt(item.amount)} to dashboard!`, 'success');
+    renderSmsScanResults();
+    loadData(true);
+  } catch (err) {
+    console.error('Import failed:', err);
+    toast(`Failed to import: ${err.message}`, 'danger');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Retry Import';
+    }
+  }
+}
+
+async function importAllMissingTransactions() {
+  if (scannedMissingList.length === 0) {
+    toast('No missing transactions to import', 'info');
+    return;
+  }
+
+  const btn = document.getElementById('btn-import-all-missing');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Importing all...';
+  }
+
+  let successCount = 0;
+  for (const item of [...scannedMissingList]) {
+    try {
+      const payload = {
+        message: item.body || `${item.merchant} transaction of ${item.amount}`,
+        amount: item.amount,
+        merchant: item.merchant || 'Bank Transaction',
+        kind: item.kind || 'outgoing',
+        note: item.note || 'Imported from SMS Scan',
+        sender: item.sender || '',
+        timestamp: item.date,
+        idempotency_key: 'import_' + (item.smsId || item.date)
+      };
+
+      const webhookToken = (window.AndroidApp && typeof window.AndroidApp.getWebhookToken === 'function')
+        ? window.AndroidApp.getWebhookToken()
+        : (state.webhookToken || '');
+
+      let url = '/api/webhook';
+      if (webhookToken) url += '?key=' + encodeURIComponent(webhookToken);
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(webhookToken ? { 'x-webhook-token': webhookToken } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        item.isRecorded = true;
+        successCount++;
+      }
+    } catch (e) {
+      console.warn('Batch import item error:', e);
+    }
+  }
+
+  scannedMissingList = scannedSmsList.filter(s => !s.isRecorded);
+  const missingBadge = document.getElementById('sms-missing-count');
+  if (missingBadge) missingBadge.textContent = scannedMissingList.length;
+
+  toast(`🎉 Imported ${successCount} missing transaction${successCount > 1 ? 's' : ''}!`, 'success');
+  renderSmsScanResults();
+  loadData(true);
+  if (btn) btn.disabled = false;
+}
 
 </script>
 </body>
