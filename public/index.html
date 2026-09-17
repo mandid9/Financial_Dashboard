@@ -1240,11 +1240,18 @@
     <!-- Mode 1: Offline SQLite Sync -->
     <div id="section-sms-offline" style="margin-bottom:14px">
       <div style="background:var(--surface-hover); border:1px solid var(--surface-border); border-radius:10px; padding:12px; font-size:13px; margin-bottom:10px; line-height:1.4">
-        Whenever Vercel or your internet was unreachable, the Android companion app safely stored incoming bank SMS into a local SQLite database. Tap below to inspect and reconcile them against your dashboard history.
+        Whenever Vercel or your internet was unreachable, the Android companion app stored incoming bank SMS into a local SQLite database and exported a backup to your Downloads folder.
       </div>
-      <button id="btn-sync-offline-sqlite" class="primary" onclick="runSmsScanner()" style="width:100%; padding:10px; font-size:14px; font-weight:600">
-        🔄 Check & Sync Offline Queue
+      <button id="btn-sync-offline-sqlite" class="primary" onclick="runSmsScanner()" style="width:100%; padding:10px; font-size:14px; font-weight:600; margin-bottom:8px">
+        🔄 Check & Sync Offline Queue (Android App)
       </button>
+      <label class="btn alt" style="width:100%; box-sizing:border-box; text-align:center; padding:9px 12px; font-size:13px; cursor:pointer; margin:0; display:flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--surface-border); border-radius:10px; background:var(--surface)">
+        <span>📂 Load Backup File from Downloads</span>
+        <input type="file" id="offline-backup-file-input" accept=".json" style="display:none" onchange="loadBackupFileFromDisk(event)">
+      </label>
+      <small style="display:block; color:var(--text-muted); font-size:11px; margin-top:6px; text-align:center">
+        File: <code>Downloads/offline_transactions_backup.json</code>
+      </small>
     </div>
 
     <!-- Mode 2: Paste Bank SMS -->
@@ -4090,6 +4097,36 @@ function reconcileAndRenderItems(newItems, statusMessage = '') {
 
   smsScanActiveFilter = scannedMissingList.length > 0 ? 'missing' : 'all';
   filterSmsScanView(smsScanActiveFilter);
+}
+
+function loadBackupFileFromDisk(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (!Array.isArray(parsed)) throw new Error('File does not contain a JSON array of transactions');
+      const items = parsed.map(t => ({
+        smsId: t.id,
+        sender: t.sender || t.merchant || 'Offline Backup',
+        body: t.raw_message || '',
+        amount: Number(t.amount) || 0,
+        merchant: t.merchant || 'Bank Transaction',
+        kind: t.kind || 'outgoing',
+        note: t.note || 'Offline Cache',
+        category: t.category || '',
+        date: Number(t.created_at || t.id || Date.now()),
+        isFromSqlite: true,
+        sqliteStatus: t.status
+      }));
+      reconcileAndRenderItems(items, `Loaded ${items.length} records from backup file`);
+      toast(`Loaded ${items.length} transactions from backup file`, 'success');
+    } catch (err) {
+      toast('Failed to read backup file: ' + err.message, 'danger');
+    }
+  };
+  reader.readAsText(file);
 }
 
 async function runSmsScanner() {
