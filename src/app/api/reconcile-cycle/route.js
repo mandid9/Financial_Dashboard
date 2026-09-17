@@ -11,20 +11,9 @@ export async function GET(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: user, error: uErr } = await supabase
-      .from('users')
-      .select('id, email')
-      .eq('email', 'kr.wn20@gmail.com')
-      .maybeSingle();
-
-    if (uErr || !user) {
-      return NextResponse.json({ error: 'User not found', detail: uErr?.message });
-    }
-
     const { data: txs, error: txErr } = await supabase
       .from('transactions')
-      .select('id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id')
-      .or(`user_id.eq.${user.id},user_id.is.null`)
+      .select('id, user_id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id')
       .order('transaction_date', { ascending: true });
 
     if (txErr) {
@@ -54,6 +43,7 @@ export async function GET(req) {
 
       const item = {
         id: t.id,
+        user_id: t.user_id,
         kind: t.kind,
         amount: amt,
         source: t.source_or_merchant,
@@ -110,7 +100,8 @@ export async function GET(req) {
       inCycleOutgoings: inCycle.filter(t => t.kind === 'outgoing'),
       inCycleIncomings: inCycle.filter(t => t.kind !== 'outgoing'),
       carriedIn,
-      carriedOut
+      carriedOut,
+      outOfCycleCount: outOfCycle.length
     });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
