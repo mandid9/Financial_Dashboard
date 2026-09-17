@@ -123,9 +123,11 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        SyncJobService.scheduleSync(this);
+
         if (savedInstanceState == null) {
             retryAttempt = 0;
-            loadDashboard(true);
+            loadDashboard(false);
         } else {
             webView.restoreState(savedInstanceState);
         }
@@ -373,8 +375,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void loadDashboard(boolean bypassCache) {
         if (webView == null) return;
-        if (bypassCache) webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
-        webView.loadUrl(DASHBOARD_URL + (bypassCache ? "?appRetry=" + System.currentTimeMillis() : ""));
+        if (bypassCache) {
+            webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
+        } else {
+            webView.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+        }
+        webView.loadUrl(DASHBOARD_URL);
     }
 
     private void scheduleDashboardRetry(WebView view) {
@@ -387,7 +393,7 @@ public class MainActivity extends AppCompatActivity {
         isRetrying = true;
         long delay = Math.min(15000L, 1000L * (1L << retryAttempt));
         retryAttempt++;
-        view.postDelayed(() -> { isRetrying = false; loadDashboard(true); }, delay);
+        view.postDelayed(() -> { isRetrying = false; loadDashboard(false); }, delay);
     }
 
     private void checkAndRequestPermissions() {
@@ -432,7 +438,6 @@ public class MainActivity extends AppCompatActivity {
             webView.removeJavascriptInterface("AndroidApp");
             webView.stopLoading();
             webView.clearHistory();
-            webView.clearCache(true);
             if (webView.getParent() != null) {
                 ((android.view.ViewGroup) webView.getParent()).removeView(webView);
             }

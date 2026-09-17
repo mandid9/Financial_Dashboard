@@ -9,7 +9,7 @@ public class BootReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         // Android system will register SmsReceiver automatically via manifest
         if (android.content.Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
-            // Sync any transactions that were queued while device was off
+            SyncJobService.scheduleSync(context);
             new Thread(() -> TransactionBackupStore.syncPendingTransactions(context)).start();
         }
     }

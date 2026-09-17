@@ -63,7 +63,7 @@ public class SmsReceiver extends BroadcastReceiver {
         BankParser.ParsedTransaction tx = BankParser.parse(context, sender, messageBody);
 
         if (tx != null && tx.isMatched && tx.amount > 0) {
-            long txId = TransactionBackupStore.saveTransaction(context, messageBody, tx.amount, tx.merchant, tx.kind, tx.defaultCategory, "pending", smsTimestamp);
+            long txId = TransactionBackupStore.saveTransaction(context, messageBody, tx.amount, tx.merchant, tx.kind, tx.defaultCategory, "pending", smsTimestamp, sender, tx.note);
             sendWebhookBackground(context, tx, sender, smsTimestamp, txId, pendingResult);
             showCleanNotification(context, tx);
         } else {
@@ -157,11 +157,17 @@ public class SmsReceiver extends BroadcastReceiver {
                 conn.disconnect();
 
                 if (code >= 200 && code < 300) {
-                    TransactionBackupStore.markSynced(context, tx.rawMessage);
+                    TransactionBackupStore.markStatusById(context, txId, "synced");
                     Log.i(TAG, "Transaction synced to dashboard: " + tx.amount + " EGP");
+                } else {
+                    TransactionBackupStore.markStatusById(context, txId, "failed");
+                    SyncJobService.scheduleSync(context);
+                    Log.w(TAG, "Webhook returned HTTP " + code + ", scheduled SyncJobService retry");
                 }
             } catch (Exception e) {
-                Log.w(TAG, "Background webhook send error: " + e.getMessage());
+                TransactionBackupStore.markStatusById(context, txId, "failed");
+                SyncJobService.scheduleSync(context);
+                Log.w(TAG, "Background webhook send error: " + e.getMessage() + ", scheduled SyncJobService retry");
             } finally {
                 if (pendingResult != null) {
                     pendingResult.finish();
