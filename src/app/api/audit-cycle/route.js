@@ -11,20 +11,9 @@ export async function GET(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: user, error: uErr } = await supabase
-      .from('users')
-      .select('id, email')
-      .eq('email', 'kr.wn20@gmail.com')
-      .maybeSingle();
-
-    if (uErr || !user) {
-      return NextResponse.json({ error: 'User not found', detail: uErr?.message });
-    }
-
     const { data: txs, error: txErr } = await supabase
       .from('transactions')
-      .select('id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id')
-      .or(`user_id.eq.${user.id},user_id.is.null`)
+      .select('*')
       .order('transaction_date', { ascending: true });
 
     if (txErr) {
@@ -40,7 +29,7 @@ export async function GET(req) {
     const carriedInOutgoings = [];
     const carriedOutOutgoings = [];
     const priorCycleOutgoings = [];
-    const otherTxs = [];
+    const allOutgoingsAug20Onwards = [];
 
     let rawInCycleOutgoingSum = 0;
     let effectiveOutgoingSum = 0;
@@ -60,6 +49,10 @@ export async function GET(req) {
         date: t.transaction_date,
         is_carried: !!t.is_carried_forward
       };
+
+      if (tDate >= startCycle && t.kind === 'outgoing') {
+        allOutgoingsAug20Onwards.push(item);
+      }
 
       if (isInCycle) {
         if (t.kind === 'outgoing') {
@@ -81,14 +74,11 @@ export async function GET(req) {
             effectiveOutgoingSum += amt;
           }
         }
-      } else {
-        otherTxs.push(item);
       }
     });
 
     return NextResponse.json({
       success: true,
-      user: user.email,
       totalCount: txs?.length || 0,
       cycle: {
         start: startCycle.toISOString(),
@@ -106,7 +96,8 @@ export async function GET(req) {
       carriedInOutgoings,
       carriedOutOutgoings,
       inCycleIncomings,
-      priorCycleOutgoings
+      priorCycleOutgoings,
+      allTxsCount: txs?.length || 0
     });
   } catch (err) {
     return NextResponse.json({ error: err.message });
