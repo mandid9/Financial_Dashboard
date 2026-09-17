@@ -248,6 +248,17 @@ export async function GET(req) {
     let uncatActual = 0;
     let todayTotal = 0;
     let todayIncome = 0;
+
+    // Explicit waterfall accumulators for rock-solid carry-forward tracking
+    let grossCycleIncome = 0;
+    let grossCycleActual = 0;
+    let carriedOutIncomeTotal = 0;
+    let carriedOutActualTotal = 0;
+    let carriedInIncomeTotal = 0;
+    let carriedInActualTotal = 0;
+    const carriedInTransactions = [];
+    const carriedOutTransactions = [];
+
     const todayStr = now.toISOString().split('T')[0];
 
     allTransactions.forEach(t => {
@@ -265,10 +276,21 @@ export async function GET(req) {
 
       if (isInTargetCycle) {
         inScope = true;
+        if (t.kind === 'outgoing') {
+          grossCycleActual += Number(t.amount);
+        } else {
+          grossCycleIncome += Number(t.amount);
+        }
+
         if (isCarried) {
           // Pinned in this target cycle to carry forward to the next cycle -> do not count in this cycle's calculations
           countInCalculations = false;
           isCarryingToNext = true;
+          if (t.kind === 'outgoing') {
+            carriedOutActualTotal += Number(t.amount);
+          } else {
+            carriedOutIncomeTotal += Number(t.amount);
+          }
         } else {
           countInCalculations = true;
           isCarryingToNext = false;
@@ -279,14 +301,38 @@ export async function GET(req) {
         countInCalculations = true; // Active & counted in this target cycle
         isCarryingToNext = false;   // It belongs to this target cycle, NOT automatically carrying to future cycles
         isCarriedFromPrev = true;
+        if (t.kind === 'outgoing') {
+          carriedInActualTotal += Number(t.amount);
+        } else {
+          carriedInIncomeTotal += Number(t.amount);
+        }
       }
 
       if (inScope) {
-        if (t.kind === 'outgoing') {
-          const catName = (t.category_id && catMap[t.category_id])
-            ? catMap[t.category_id].name
-            : (t.categories ? (Array.isArray(t.categories) ? t.categories[0]?.name : t.categories.name) : null);
+        const catName = (t.category_id && catMap[t.category_id])
+          ? catMap[t.category_id].name
+          : (t.categories ? (Array.isArray(t.categories) ? t.categories[0]?.name : t.categories.name) : null);
 
+        const txPayload = {
+          row: t.id,
+          kind: t.kind,
+          source: t.source_or_merchant,
+          date: new Date(t.transaction_date).toLocaleString(),
+          timestamp: t.transaction_date,
+          amount: Number(t.amount),
+          note: t.note,
+          category: catName,
+          is_carried_forward: isCarryingToNext,
+          carried_from_prev: isCarriedFromPrev
+        };
+
+        if (isCarryingToNext) {
+          carriedOutTransactions.push(txPayload);
+        } else if (isCarriedFromPrev) {
+          carriedInTransactions.push(txPayload);
+        }
+
+        if (t.kind === 'outgoing') {
           if (countInCalculations) {
             if (t.category_id && catMap[t.category_id]) {
               catMap[t.category_id].actual += Number(t.amount);
@@ -298,36 +344,13 @@ export async function GET(req) {
             totalActual += Number(t.amount);
             if (isCurrent && isToday) todayTotal += Number(t.amount);
           }
-
-          outgoing.push({
-            row: t.id,
-            kind: 'outgoing',
-            source: t.source_or_merchant,
-            date: new Date(t.transaction_date).toLocaleString(),
-            timestamp: t.transaction_date,
-            amount: Number(t.amount),
-            note: t.note,
-            category: catName,
-            is_carried_forward: isCarryingToNext,
-            carried_from_prev: isCarriedFromPrev
-          });
+          outgoing.push(txPayload);
         } else {
           if (countInCalculations) {
             totalIncome += Number(t.amount);
             if (isCurrent && isToday) todayIncome += Number(t.amount);
           }
-
-          incoming.push({
-            row: t.id,
-            kind: 'incoming',
-            source: t.source_or_merchant,
-            date: new Date(t.transaction_date).toLocaleString(),
-            timestamp: t.transaction_date,
-            amount: Number(t.amount),
-            note: t.note,
-            is_carried_forward: isCarryingToNext,
-            carried_from_prev: isCarriedFromPrev
-          });
+          incoming.push(txPayload);
         }
       }
     });
@@ -375,14 +398,26 @@ export async function GET(req) {
     // Historical cycle archives summary for Insights
     const historicalCycles = [];
     for (let i = 1; i <= 4; i++) {
-      const hBounds = getCycleBounds(-i);
+      const hBounds = getCycleBounds(cycleOffset - i);
+      const hPrevBounds = getCycleBounds(cycleOffset - i - 1);
       let hOut = 0;
       let hInc = 0;
       const hCats = {};
 
       allTransactions.forEach(t => {
         const tDate = new Date(t.transaction_date);
-        if (tDate >= hBounds.start && tDate < hBounds.end) {
+        const isCarried = !!t.is_carried_forward;
+        const isInHCycle = tDate >= hBounds.start && tDate < hBounds.end;
+        const isFromHPrevCycle = tDate >= hPrevBounds.start && tDate < hPrevBounds.end;
+
+        let inHCalc = false;
+        if (isInHCycle) {
+          if (!isCarried) inHCalc = true; // Exclude if forwarded out to subsequent cycle
+        } else if (isFromHPrevCycle && isCarried) {
+          inHCalc = true; // Include because forwarded into this past cycle
+        }
+
+        if (inHCalc) {
           if (t.kind === 'outgoing') {
             hOut += Number(t.amount);
             const cname = (t.category_id && catMap[t.category_id])
@@ -405,32 +440,7 @@ export async function GET(req) {
       });
     }
 
-    const carriedTransactions = allTransactions
-      .filter(t => {
-        const d = new Date(t.transaction_date);
-        if (isCurrent) {
-          return d >= currentBounds.start && d < currentBounds.end && t.is_carried_forward;
-        } else if (isNext) {
-          return d >= prevTargetBounds.start && d < prevTargetBounds.end && t.is_carried_forward;
-        }
-        return false;
-      })
-      .map(t => {
-        const catName = (t.category_id && catMap[t.category_id])
-          ? catMap[t.category_id].name
-          : (t.categories ? (Array.isArray(t.categories) ? t.categories[0]?.name : t.categories.name) : 'Uncategorized');
-        return {
-          row: t.id,
-          kind: t.kind,
-          source: t.source_or_merchant,
-          date: new Date(t.transaction_date).toLocaleString(),
-          timestamp: t.transaction_date,
-          amount: Number(t.amount),
-          note: t.note,
-          category: catName,
-          is_carried_forward: true
-        };
-      });
+    const carriedTransactions = carriedOutTransactions;
 
     const requestedHistoryFilter = searchParams.get('historyFilter') || 'all';
     const historyFilter = ['all', 'today', 'week', 'month'].includes(requestedHistoryFilter) ? requestedHistoryFilter : 'all';
@@ -439,6 +449,21 @@ export async function GET(req) {
       const catName = (t.category_id && catMap[t.category_id])
         ? catMap[t.category_id].name
         : (t.categories ? (Array.isArray(t.categories) ? t.categories[0]?.name : t.categories.name) : 'Uncategorized');
+
+      const tDate = new Date(t.transaction_date);
+      const isInTargetCycle = tDate >= targetBounds.start && tDate < targetBounds.end;
+      const isFromPrevTargetCycle = tDate >= prevTargetBounds.start && tDate < prevTargetBounds.end;
+      const isCarried = !!t.is_carried_forward;
+
+      let isCarryingToNext = false;
+      let isCarriedFromPrev = false;
+
+      if (isInTargetCycle && isCarried) {
+        isCarryingToNext = true;
+      } else if (isFromPrevTargetCycle && isCarried) {
+        isCarriedFromPrev = true;
+      }
+
       return {
         row: t.id,
         kind: t.kind,
@@ -448,8 +473,8 @@ export async function GET(req) {
         amount: Number(t.amount),
         note: t.note,
         category: catName,
-        is_carried_forward: !!t.is_carried_forward,
-        carried_from_prev: false
+        is_carried_forward: isCarryingToNext,
+        carried_from_prev: isCarriedFromPrev
       };
     });
 
@@ -512,7 +537,19 @@ export async function GET(req) {
         todayIncome,
         historyCycles: historicalCycles,
         debtSummary,
-        carriedTransactions
+        carriedTransactions,
+        carriedBreakdown: {
+          carriedIn: carriedInTransactions,
+          carriedOut: carriedOutTransactions,
+          carriedInIncomeTotal,
+          carriedInActualTotal,
+          carriedOutIncomeTotal,
+          carriedOutActualTotal,
+          grossCycleIncome,
+          grossCycleActual,
+          effectiveIncome: totalIncome,
+          effectiveActual: totalActual
+        }
       },
       budget: {
         metrics: {

@@ -675,6 +675,7 @@
     /* Carry pin */
     .carry-pin { background:none; border:none; padding:2px 4px; font-size:16px; opacity:0.3; cursor:pointer; transition: transform var(--duration-fast) var(--ease-out), opacity var(--duration-fast) ease-out; line-height:1; }
     .carry-pin.active { opacity:1; transform:scale(1.2); }
+    .carry-pin.carried-in { opacity:1; transform:scale(1.15); filter:drop-shadow(0 0 4px rgba(96,165,250,0.5)); }
     .carry-pin:hover { opacity:0.7; }
 
     /* Enhanced progress bars */
@@ -2245,28 +2246,106 @@ function renderSummaryReport() {
       </div>
     </div>
 
-    <!-- Carried Forward Transactions Breakdown -->
+    <!-- Cycle Cashflow & Carry-Forward Waterfall -->
     ${(() => {
-      const carried = state.dashboard.carriedTransactions || [];
-      const carriedSum = carried.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-      if (!carried.length) return '';
-      const title = state.cycle.isCurrent ? '📌 Marked for Carry Forward' : '📌 Carried From Previous Cycle';
-      return `
-        <div class="card" style="margin-bottom:16px; padding:12px; background:rgba(99,102,241,0.06); border:1px solid rgba(99,102,241,0.25); border-radius:12px">
+      const cb = (state.dashboard && state.dashboard.carriedBreakdown) || {};
+      const carriedIn = cb.carriedIn || [];
+      const carriedOut = cb.carriedOut || state.dashboard.carriedTransactions || [];
+      const hasCarried = carriedIn.length > 0 || carriedOut.length > 0;
+      if (!hasCarried) return '';
+
+      const grossInc = cb.grossCycleIncome ?? (m.income || 0);
+      const carriedOutInc = cb.carriedOutIncomeTotal || 0;
+      const carriedInInc = cb.carriedInIncomeTotal || 0;
+      const effInc = cb.effectiveIncome ?? (m.income || 0);
+
+      const grossAct = cb.grossCycleActual ?? (m.actual || 0);
+      const carriedOutAct = cb.carriedOutActualTotal || 0;
+      const carriedInAct = cb.carriedInActualTotal || 0;
+      const effAct = cb.effectiveActual ?? (m.actual || 0);
+
+      let cardsHtml = '';
+
+      // Cashflow Waterfall Card
+      cardsHtml += `
+        <div class="card" style="margin-bottom:14px; padding:14px; background:rgba(99,102,241,0.06); border:1px solid rgba(99,102,241,0.25); border-radius:12px">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-            <strong>${title} (${carried.length})</strong>
-            <span class="amount" style="font-weight:700; color:#818cf8; font-size:14px">${fmt(carriedSum)}</span>
+            <strong style="font-size:13px">📊 Cycle Carry-Forward Accounting</strong>
+            <span class="badge blue">${state.cycle.isCurrent ? 'Current Active Cycle' : state.cycle.label}</span>
           </div>
-          <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
-            ${carried.map(t => `
-              <div class="flex-row">
-                <span>${esc(t.source || 'Expense')} <small style="color:var(--text-muted)">(${t.category || 'Uncategorized'})</small></span>
-                <strong class="amount">${fmt(t.amount)}</strong>
+          <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:6px">
+            <!-- Income Waterfall -->
+            <div style="padding:8px; background:var(--surface); border-radius:8px; border:1px solid var(--surface-border)">
+              <div style="font-weight:600; color:var(--success); margin-bottom:4px">📥 Income Reconciliation:</div>
+              <div class="flex-row" style="font-size:11px"><span>In-Cycle Direct Income:</span><strong class="amount">${fmt(grossInc)}</strong></div>
+              ${carriedOutInc > 0 ? `<div class="flex-row" style="font-size:11px; color:var(--text-muted)"><span>(-) Deferred to Next Cycle:</span><strong class="amount" style="color:var(--danger)">- ${fmt(carriedOutInc)}</strong></div>` : ''}
+              ${carriedInInc > 0 ? `<div class="flex-row" style="font-size:11px; color:#60a5fa"><span>(+) Carried In from Previous Cycle:</span><strong class="amount" style="color:var(--success)">+ ${fmt(carriedInInc)}</strong></div>` : ''}
+              <div class="flex-row" style="border-top:1px solid var(--surface-border); padding-top:4px; margin-top:4px; font-weight:700">
+                <span>= Effective Cycle Income:</span>
+                <span class="amount" style="color:var(--success); font-size:13px">${fmt(effInc)}</span>
               </div>
-            `).join('')}
+            </div>
+
+            <!-- Spending Waterfall (if any spending carried) -->
+            ${(carriedOutAct > 0 || carriedInAct > 0) ? `
+            <div style="padding:8px; background:var(--surface); border-radius:8px; border:1px solid var(--surface-border)">
+              <div style="font-weight:600; color:var(--danger); margin-bottom:4px">📉 Spending Reconciliation:</div>
+              <div class="flex-row" style="font-size:11px"><span>In-Cycle Direct Spending:</span><strong class="amount">${fmt(grossAct)}</strong></div>
+              ${carriedOutAct > 0 ? `<div class="flex-row" style="font-size:11px; color:var(--text-muted)"><span>(-) Deferred to Next Cycle:</span><strong class="amount" style="color:var(--success)">- ${fmt(carriedOutAct)}</strong></div>` : ''}
+              ${carriedInAct > 0 ? `<div class="flex-row" style="font-size:11px; color:var(--danger)"><span>(+) Carried In from Previous:</span><strong class="amount" style="color:var(--danger)">+ ${fmt(carriedInAct)}</strong></div>` : ''}
+              <div class="flex-row" style="border-top:1px solid var(--surface-border); padding-top:4px; margin-top:4px; font-weight:700">
+                <span>= Effective Cycle Spending:</span>
+                <span class="amount" style="color:var(--danger); font-size:13px">${fmt(effAct)}</span>
+              </div>
+            </div>
+            ` : ''}
           </div>
         </div>
       `;
+
+      // Carried In List (from previous cycle)
+      if (carriedIn.length > 0) {
+        const carriedInSum = carriedIn.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+        cardsHtml += `
+          <div class="card" style="margin-bottom:14px; padding:12px; background:rgba(59,130,246,0.06); border:1px solid rgba(59,130,246,0.25); border-radius:12px">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+              <strong>📥 Carried Over From Previous Cycle (${carriedIn.length})</strong>
+              <span class="amount" style="font-weight:700; color:#60a5fa; font-size:14px">+ ${fmt(carriedInSum)}</span>
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
+              ${carriedIn.map(t => `
+                <div class="flex-row">
+                  <span>${esc(t.source || 'Transaction')} <small style="color:var(--text-muted)">(${parseDateStr(t.timestamp || t.date).toLocaleDateString([], {month:'short', day:'numeric'})} • ${t.kind === 'incoming' ? 'Income' : (t.category || 'Expense')})</small></span>
+                  <strong class="amount" style="color:${t.kind==='incoming'?'var(--success)':'var(--text)'}">${t.kind==='incoming'?'+':''}${fmt(t.amount)}</strong>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // Deferred Out List (carrying to next cycle)
+      if (carriedOut.length > 0) {
+        const carriedOutSum = carriedOut.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+        cardsHtml += `
+          <div class="card" style="margin-bottom:14px; padding:12px; background:rgba(234,179,8,0.06); border:1px solid rgba(234,179,8,0.25); border-radius:12px">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+              <strong>📤 Deferred to Next Cycle (${carriedOut.length})</strong>
+              <span class="amount" style="font-weight:700; color:#eab308; font-size:14px">${fmt(carriedOutSum)}</span>
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
+              ${carriedOut.map(t => `
+                <div class="flex-row">
+                  <span>${esc(t.source || 'Transaction')} <small style="color:var(--text-muted)">(${parseDateStr(t.timestamp || t.date).toLocaleDateString([], {month:'short', day:'numeric'})} • ${t.kind === 'incoming' ? 'Income' : (t.category || 'Expense')})</small></span>
+                  <strong class="amount" style="color:${t.kind==='incoming'?'var(--success)':'var(--text)'}">${t.kind==='incoming'?'+':''}${fmt(t.amount)}</strong>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      return cardsHtml;
     })()}
     
     <h3 style="margin-bottom:12px; font-size:14px; color:var(--text-secondary)">📋 Variance Report</h3>
@@ -2300,10 +2379,10 @@ function renderInsights() {
   const currentLabel = state.cycle ? state.cycle.label : 'Current';
   
   // Add current active cycle to the end for comparison
-  const totalCycleIncome = (state.dashboard.incoming || []).reduce((sum, t) => sum + t.amount, 0);
+  const totalCycleIncome = state.budget?.metrics?.income ?? 0;
   cycles.push({
     label: currentLabel,
-    outgoing: state.budget.metrics.actual,
+    outgoing: state.budget?.metrics?.actual ?? 0,
     income: totalCycleIncome
   });
 
@@ -2392,8 +2471,8 @@ function renderHistory() {
       if (cm < 0) { cm = 11; cy -= 1; }
     }
     const startOfMonth = new Date(cy, cm, 20);
-    outList = outList.filter(t => parseDateStr(t.timestamp || t.date) >= startOfMonth);
-    incList = incList.filter(t => parseDateStr(t.timestamp || t.date) >= startOfMonth);
+    outList = outList.filter(t => t.carried_from_prev || parseDateStr(t.timestamp || t.date) >= startOfMonth);
+    incList = incList.filter(t => t.carried_from_prev || parseDateStr(t.timestamp || t.date) >= startOfMonth);
   }
   
   const q = state.historySearch.toLowerCase();
@@ -2670,6 +2749,7 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
   if (isRev) badges += `<span class="badge red">Reversed</span>`;
   if (isSplit) badges += `<span class="badge blue">Split</span>`;
   if (t.carried_from_prev) badges += `<span class="badge blue">Carried Over</span>`;
+  if (t.is_carried_forward) badges += `<span class="badge yellow">Deferred to Next</span>`;
   
   const checkboxHtml = showCheckbox ? `<div class="checkbox-container" onclick="event.stopPropagation()"><input type="checkbox" class="carry-checkbox" data-row="${t.row}" data-kind="${t.kind}"></div>` : '';
   const rowQ = `'${t.row}'`; // quote the UUID for onclick handlers
@@ -2700,11 +2780,24 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
     </div>
   `;
 
-  const isCarried = (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row) && i.kind === t.kind)) ||
+  const isCarriedToNext = (state.carryItems && state.carryItems.some(i => String(i.row) === String(t.row) && i.kind === t.kind)) ||
     (!!t.is_carried_forward);
-  const pinTitle = isCarried ? 'Carried to next cycle (click to unpin)' : 'Carry to next cycle (click to pin)';
+  const isCarriedIn = !!t.carried_from_prev;
+
+  let pinTitle = 'Carry to next cycle (click to pin)';
+  let pinIcon = '📌';
+  let pinClass = '';
+  if (isCarriedToNext) {
+    pinTitle = 'Deferred to next cycle (click to keep in current cycle)';
+    pinClass = 'active';
+  } else if (isCarriedIn) {
+    pinTitle = 'Carried in from previous cycle (click to revert)';
+    pinIcon = '↩️';
+    pinClass = 'carried-in';
+  }
+
   const pinSourceEscaped = esc(t.source || 'Transaction').replace(/'/g, "\\'");
-  const pinHtml = `<button class="carry-pin ${isCarried ? 'active' : ''}" title="${pinTitle}" onclick="promptCarryPin(event, ${rowQ}, '${t.kind}', '${pinSourceEscaped}', ${Number(t.amount) || 0})">📌</button>`;
+  const pinHtml = `<button class="carry-pin ${pinClass}" title="${pinTitle}" onclick="promptCarryPin(event, ${rowQ}, '${t.kind}', '${pinSourceEscaped}', ${Number(t.amount) || 0}, ${isCarriedIn})">${pinIcon}</button>`;
 
   return `
     <div class="card tx-card ${isRev ? 'reversed' : ''} ${t.kind}" onclick="toggleExpand('${cid}')" style="padding: 12px; margin-bottom: 8px">
@@ -2733,13 +2826,17 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
   `;
 }
 
-function promptCarryPin(e, row, kind, source, amount) {
+function promptCarryPin(e, row, kind, source, amount, isCarriedIn = false) {
   e.stopPropagation();
-  const isCurrentlyCarried = (state.carryItems && state.carryItems.some(i => String(i.row) === String(row) && i.kind === kind)) ||
-    (state.dashboard && [...(state.dashboard.outgoing || []), ...(state.dashboard.incoming || [])].some(i => String(i.row) === String(row) && i.is_carried_forward));
-  
-  const willCarry = !isCurrentlyCarried;
-  state.pendingCarry = { row, kind, willCarry };
+  let willCarry;
+  if (isCarriedIn) {
+    willCarry = false;
+  } else {
+    const isCurrentlyCarried = (state.carryItems && state.carryItems.some(i => String(i.row) === String(row) && i.kind === kind)) ||
+      (state.dashboard && [...(state.dashboard.outgoing || []), ...(state.dashboard.incoming || [])].some(i => String(i.row) === String(row) && i.is_carried_forward));
+    willCarry = !isCurrentlyCarried;
+  }
+  state.pendingCarry = { row, kind, willCarry, isCarriedIn };
   
   const iconEl = document.getElementById('carry-confirm-icon');
   const titleEl = document.getElementById('carry-confirm-title');
@@ -2749,20 +2846,31 @@ function promptCarryPin(e, row, kind, source, amount) {
   const amountEl = document.getElementById('carry-confirm-amount');
   const btnEl = document.getElementById('carry-confirm-btn');
   
-  if (iconEl) iconEl.textContent = willCarry ? '📌' : '↩️';
-  if (titleEl) titleEl.textContent = willCarry ? 'Move to Next Cycle?' : 'Keep in Current Cycle?';
-  if (descEl) descEl.textContent = willCarry 
-    ? 'This transaction will be carried forward to the next budget cycle.' 
-    : 'This will remove the carry-forward pin and keep the transaction in the current cycle.';
+  if (isCarriedIn) {
+    if (iconEl) iconEl.textContent = '↩️';
+    if (titleEl) titleEl.textContent = 'Revert to Previous Cycle?';
+    if (descEl) descEl.textContent = 'This transaction was forwarded into the current cycle from the previous cycle. Reverting will remove it from this cycle and return it to the previous cycle.';
+    if (btnEl) {
+      btnEl.textContent = '↩️ Revert to Previous Cycle';
+      btnEl.className = 'alt';
+    }
+  } else {
+    if (iconEl) iconEl.textContent = willCarry ? '📌' : '↩️';
+    if (titleEl) titleEl.textContent = willCarry ? 'Move to Next Cycle?' : 'Keep in Current Cycle?';
+    if (descEl) descEl.textContent = willCarry 
+      ? 'This transaction will be deferred and carried forward to the next budget cycle.' 
+      : 'This will remove the carry-forward pin and keep the transaction in the current cycle.';
+    if (btnEl) {
+      btnEl.textContent = willCarry ? '📌 Move to Next Cycle' : 'Keep in Current Cycle';
+      btnEl.className = willCarry ? 'primary' : 'alt';
+    }
+  }
+
   if (sourceEl) sourceEl.textContent = source || 'Transaction';
   if (kindEl) kindEl.textContent = kind === 'incoming' ? 'Incoming Income' : 'Outgoing Expense';
   if (amountEl) {
     amountEl.textContent = fmt(amount);
     amountEl.style.color = kind === 'incoming' ? 'var(--success)' : 'var(--text)';
-  }
-  if (btnEl) {
-    btnEl.textContent = willCarry ? '📌 Move to Next Cycle' : 'Keep in Current Cycle';
-    btnEl.className = willCarry ? 'primary' : 'alt';
   }
   
   openModal('modal-carry-confirm');
@@ -2770,18 +2878,21 @@ function promptCarryPin(e, row, kind, source, amount) {
 
 async function confirmCarryPinAction() {
   if (!state.pendingCarry) return;
-  const { row, kind, willCarry } = state.pendingCarry;
+  const { row, kind, willCarry, isCarriedIn } = state.pendingCarry;
   closeModalForce('modal-carry-confirm');
   state.pendingCarry = null;
 
-  if (willCarry) {
+  if (isCarriedIn) {
+    state.carryItems = state.carryItems.filter(i => !(String(i.row) === String(row) && i.kind === kind));
+    toast('↩️ Reverted to previous cycle', 'info');
+  } else if (willCarry) {
     if (!state.carryItems.some(i => String(i.row) === String(row))) {
       state.carryItems.push({ row, kind });
     }
-    toast('📌 Marked to carry over to next cycle', 'success');
+    toast('📌 Deferred to next cycle', 'success');
   } else {
     state.carryItems = state.carryItems.filter(i => !(String(i.row) === String(row) && i.kind === kind));
-    toast('Unpinned from next cycle', 'info');
+    toast('Kept in current cycle', 'info');
   }
   sessionStorage.setItem('carryItems', JSON.stringify(state.carryItems));
   renderAll();
