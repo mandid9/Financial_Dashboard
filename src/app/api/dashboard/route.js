@@ -39,38 +39,7 @@ export async function GET(req) {
       ]).catch(e => console.warn('Auto-backfill notice:', e.message));
     }
 
-    // Auto-clean any exact duplicate transactions for this user (same amount, same kind, within 24 hours)
-    try {
-      const { data: allUserTxs } = await supabase
-        .from('transactions')
-        .select('id, amount, kind, transaction_date')
-        .eq('user_id', user.id)
-        .order('transaction_date', { ascending: true });
 
-      if (allUserTxs && allUserTxs.length > 1) {
-        const dupIdsToDelete = [];
-        for (let i = 0; i < allUserTxs.length; i++) {
-          for (let j = i + 1; j < allUserTxs.length; j++) {
-            if (dupIdsToDelete.includes(allUserTxs[j].id)) continue;
-            if (
-              allUserTxs[i].kind === allUserTxs[j].kind &&
-              Math.abs(Number(allUserTxs[i].amount) - Number(allUserTxs[j].amount)) < 0.01
-            ) {
-              const diff = Math.abs(new Date(allUserTxs[i].transaction_date) - new Date(allUserTxs[j].transaction_date));
-              if (diff <= 24 * 3600 * 1000) {
-                dupIdsToDelete.push(allUserTxs[j].id);
-              }
-            }
-          }
-        }
-        if (dupIdsToDelete.length > 0) {
-          await supabase.from('transactions').delete().in('id', dupIdsToDelete);
-          console.log(`[Dashboard] Auto-cleaned ${dupIdsToDelete.length} duplicate transactions.`);
-        }
-      }
-    } catch (e) {
-      console.warn('Auto-dedup notice:', e.message);
-    }
 
     // Ensure user has a persistent webhook token
     let userWebhookToken = null;
@@ -105,8 +74,11 @@ export async function GET(req) {
       let nextY = y;
       if (nextM > 11) { nextM = 0; nextY += 1; }
 
-      const start = new Date(y, m, cycleStartDay, 0, 0, 0);
-      const end = new Date(nextY, nextM, cycleStartDay, 0, 0, 0);
+      // Egypt local time offset is UTC+3 (Egypt DST). A cycle starting on day 20 in Egypt
+      // begins at midnight 00:00:00 Egypt time (21:00:00 UTC on the 19th).
+      // Using UTC-3h margin ensures all transactions recorded from midnight on the 20th in Egypt are included.
+      const start = new Date(Date.UTC(y, m, cycleStartDay, 0, 0, 0) - (3 * 3600 * 1000));
+      const end = new Date(Date.UTC(nextY, nextM, cycleStartDay, 0, 0, 0) - (3 * 3600 * 1000));
 
       const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
       const shortYear = String(nextY).slice(-2);
@@ -480,10 +452,11 @@ export async function GET(req) {
 
     let filteredHistoryItems;
     const historyNow = new Date();
-    if (historyFilter === 'all') {
+    // Default history view strictly to Current Cycle transactions ([...outgoing, ...incoming])
+    if (historyFilter === 'all_time') {
       filteredHistoryItems = allFormattedHistoryItems;
     } else if (historyFilter === 'today') {
-      filteredHistoryItems = allFormattedHistoryItems.filter(item => {
+      filteredHistoryItems = [...outgoing, ...incoming].filter(item => {
         const date = new Date(item.timestamp);
         return date.toDateString() === historyNow.toDateString();
       });
@@ -491,11 +464,10 @@ export async function GET(req) {
       const startOfWeek = new Date(historyNow);
       startOfWeek.setHours(0, 0, 0, 0);
       startOfWeek.setDate(historyNow.getDate() - historyNow.getDay());
-      filteredHistoryItems = allFormattedHistoryItems.filter(item => new Date(item.timestamp) >= startOfWeek);
-    } else if (historyFilter === 'month') {
-      filteredHistoryItems = [...outgoing, ...incoming];
+      filteredHistoryItems = [...outgoing, ...incoming].filter(item => new Date(item.timestamp) >= startOfWeek);
     } else {
-      filteredHistoryItems = allFormattedHistoryItems;
+      // Default: Only transactions from current cycle
+      filteredHistoryItems = [...outgoing, ...incoming];
     }
     if (historySearch) {
       const cleanSearch = historySearch.replace(/,/g, '').trim();

@@ -723,9 +723,9 @@
     .summary-metric small { display:block; margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); }
     .summary-metric .val { font-size:17px; font-weight:700; font-family:'Geist Mono', monospace; }
     .variance-row { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-radius:10px; margin-bottom:6px; background:var(--surface-hover); border:1px solid var(--surface-border); }
-    .variance-row .vr-name { font-weight:600; font-size:13px; }
-    .variance-row .vr-detail { font-size:11px; color:var(--text-muted); }
-    .variance-row .vr-diff { font-weight:700; font-size:13px; font-family:'Geist Mono', monospace; }
+    .variance-row .vr-name { font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .variance-row .vr-detail { font-size:11px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .variance-row .vr-diff { font-weight:700; font-size:13px; font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; min-width:105px; text-align:right; white-space:nowrap; flex-shrink:0; margin-left:8px; }
 
     /* Floating Island Cycle Navigator */
     .cycle-nav-bar {
@@ -1026,7 +1026,13 @@
       <div class="pill" data-filter="today">Today</div>
       <div class="pill" data-filter="week">This Week</div>
       <div class="pill" data-filter="month">This Month</div>
-      <div class="pill active" data-filter="all">All</div>
+      <div class="pill active" data-filter="all">All Cycle</div>
+    </div>
+    
+    <div class="filter-pills" id="history-type-filters" style="margin-bottom:12px; gap:6px;">
+      <div class="pill active" data-type="all">⚡ All</div>
+      <div class="pill" data-type="outgoing">📉 Spending</div>
+      <div class="pill" data-type="incoming">📥 Income</div>
     </div>
     
     <div style="display:flex; gap:8px; margin-bottom:12px">
@@ -1041,8 +1047,8 @@
     <div id="history-results" aria-live="polite" style="font-size:12px; color:var(--text-muted); margin-bottom:8px"></div>
     <div id="history-outgoing-list"></div>
     
-    <h2 style="margin-top:24px">Incoming</h2>
-    <div id="history-incoming-list"></div>
+    <h2 id="history-incoming-heading" style="margin-top:24px; display:none">Incoming</h2>
+    <div id="history-incoming-list" style="display:none"></div>
     <button id="history-load-more" class="alt" style="display:none; width:100%; margin-top:16px" onclick="loadMoreHistory()">Load more history</button>
 
     <div style="margin-top:24px; display:flex; flex-direction:column; gap:12px;">
@@ -1461,6 +1467,7 @@ const state = {
   historyFilter: 'all',
   historySearch: '',
   historyGroup: 'date',
+  historyType: 'all',
   historyPage: 1,
   historyPageSize: 100,
   historyAppend: false,
@@ -1503,6 +1510,18 @@ function toast(message, type = 'info') {
     setTimeout(() => el.remove(), 150);
   }, 3000);
 }
+
+function updateAndroidSwipeRefresh() {
+  if (!window.AndroidApp || typeof window.AndroidApp.setSwipeRefreshEnabled !== 'function') return;
+  const isHomeActive = !!document.getElementById('page-home')?.classList.contains('active');
+  const isScrolledToTop = (window.scrollY || document.documentElement.scrollTop || 0) <= 2;
+  const hasOpenModal = !!document.querySelector('.modal-backdrop.open');
+  const shouldEnable = isHomeActive && isScrolledToTop && !hasOpenModal;
+  try {
+    window.AndroidApp.setSwipeRefreshEnabled(shouldEnable);
+  } catch(e) {}
+}
+window.addEventListener('scroll', updateAndroidSwipeRefresh, { passive: true });
 
 
 
@@ -1891,6 +1910,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     state.expandedCardId = null;
     if(e.currentTarget.dataset.target === 'page-history') renderHistory();
     if(e.currentTarget.dataset.target === 'page-insights') renderInsights();
+    updateAndroidSwipeRefresh();
   });
 });
 
@@ -2230,18 +2250,18 @@ function renderSummaryReport() {
         <strong>💳 Debt Summary</strong>
         <span class="badge ${debt.isFullyPaid ? 'green' : 'yellow'}">${debt.isFullyPaid ? '100% Settled ✓' : 'Active'}</span>
       </div>
-      <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
-        <div class="flex-row">
+      <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:6px">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
           <span>Planned Debt:</span>
-          <strong class="amount">${fmt(debt.plannedDebt || 0)}</strong>
+          <strong class="amount" style="font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; flex-shrink:0; margin-left:8px">${fmt(debt.plannedDebt || 0)}</strong>
         </div>
-        <div class="flex-row">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
           <span>Paid Debt (Repayments):</span>
-          <strong class="amount" style="color:var(--success)">${fmt(debt.paidDebt || 0)}</strong>
+          <strong class="amount" style="font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; flex-shrink:0; margin-left:8px; color:var(--success)">${fmt(debt.paidDebt || 0)}</strong>
         </div>
-        <div class="flex-row" style="border-top:1px solid rgba(255,255,255,0.1); padding-top:6px; margin-top:4px; font-weight:700; color:var(--text)">
-          <span>Unpaid Remainder (Eligible at End of Cycle):</span>
-          <span class="amount" style="color:${(debt.unpaidRemainder||0) > 0 ? 'var(--danger)' : '#4ade80'}; font-size:14px">${fmt(debt.unpaidRemainder || 0)}</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--surface-border); padding-top:6px; margin-top:2px; font-weight:700; color:var(--text)">
+          <span>Unpaid Remainder:</span>
+          <span class="amount" style="font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; flex-shrink:0; margin-left:8px; color:${(debt.unpaidRemainder||0) > 0 ? 'var(--danger)' : '#4ade80'}; font-size:14px">${fmt(debt.unpaidRemainder || 0)}</span>
         </div>
       </div>
     </div>
@@ -2277,12 +2297,15 @@ function renderSummaryReport() {
             <!-- Income Waterfall -->
             <div style="padding:8px; background:var(--surface); border-radius:8px; border:1px solid var(--surface-border)">
               <div style="font-weight:600; color:var(--success); margin-bottom:4px">📥 Income Reconciliation:</div>
-              <div class="flex-row" style="font-size:11px"><span>In-Cycle Direct Income:</span><strong class="amount">${fmt(grossInc)}</strong></div>
-              ${carriedOutInc > 0 ? `<div class="flex-row" style="font-size:11px; color:var(--text-muted)"><span>(-) Deferred to Next Cycle:</span><strong class="amount" style="color:var(--danger)">- ${fmt(carriedOutInc)}</strong></div>` : ''}
-              ${carriedInInc > 0 ? `<div class="flex-row" style="font-size:11px; color:#60a5fa"><span>(+) Carried In from Previous Cycle:</span><strong class="amount" style="color:var(--success)">+ ${fmt(carriedInInc)}</strong></div>` : ''}
-              <div class="flex-row" style="border-top:1px solid var(--surface-border); padding-top:4px; margin-top:4px; font-weight:700">
+              <div class="flex-row" style="font-size:11px; display:flex; justify-content:space-between; align-items:center;">
+                <span>In-Cycle Direct Income:</span>
+                <strong class="amount" style="font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right">${fmt(grossInc)}</strong>
+              </div>
+              ${carriedOutInc > 0 ? `<div class="flex-row" style="font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;"><span>(-) Deferred to Next Cycle:</span><strong class="amount" style="color:var(--danger); font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right">- ${fmt(carriedOutInc)}</strong></div>` : ''}
+              ${carriedInInc > 0 ? `<div class="flex-row" style="font-size:11px; color:#60a5fa; display:flex; justify-content:space-between; align-items:center;"><span>(+) Carried In from Previous:</span><strong class="amount" style="color:var(--success); font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right">+ ${fmt(carriedInInc)}</strong></div>` : ''}
+              <div class="flex-row" style="border-top:1px solid var(--surface-border); padding-top:4px; margin-top:4px; font-weight:700; display:flex; justify-content:space-between; align-items:center;">
                 <span>= Effective Cycle Income:</span>
-                <span class="amount" style="color:var(--success); font-size:13px">${fmt(effInc)}</span>
+                <span class="amount" style="color:var(--success); font-size:13px; font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right">${fmt(effInc)}</span>
               </div>
             </div>
 
@@ -2290,12 +2313,15 @@ function renderSummaryReport() {
             ${(carriedOutAct > 0 || carriedInAct > 0) ? `
             <div style="padding:8px; background:var(--surface); border-radius:8px; border:1px solid var(--surface-border)">
               <div style="font-weight:600; color:var(--danger); margin-bottom:4px">📉 Spending Reconciliation:</div>
-              <div class="flex-row" style="font-size:11px"><span>In-Cycle Direct Spending:</span><strong class="amount">${fmt(grossAct)}</strong></div>
-              ${carriedOutAct > 0 ? `<div class="flex-row" style="font-size:11px; color:var(--text-muted)"><span>(-) Deferred to Next Cycle:</span><strong class="amount" style="color:var(--success)">- ${fmt(carriedOutAct)}</strong></div>` : ''}
-              ${carriedInAct > 0 ? `<div class="flex-row" style="font-size:11px; color:var(--danger)"><span>(+) Carried In from Previous:</span><strong class="amount" style="color:var(--danger)">+ ${fmt(carriedInAct)}</strong></div>` : ''}
-              <div class="flex-row" style="border-top:1px solid var(--surface-border); padding-top:4px; margin-top:4px; font-weight:700">
+              <div class="flex-row" style="font-size:11px; display:flex; justify-content:space-between; align-items:center;">
+                <span>In-Cycle Direct Spending:</span>
+                <strong class="amount" style="font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right">${fmt(grossAct)}</strong>
+              </div>
+              ${carriedOutAct > 0 ? `<div class="flex-row" style="font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;"><span>(-) Deferred to Next Cycle:</span><strong class="amount" style="color:var(--success); font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right">- ${fmt(carriedOutAct)}</strong></div>` : ''}
+              ${carriedInAct > 0 ? `<div class="flex-row" style="font-size:11px; color:var(--danger); display:flex; justify-content:space-between; align-items:center;"><span>(+) Carried In from Previous:</span><strong class="amount" style="color:var(--danger); font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right">+ ${fmt(carriedInAct)}</strong></div>` : ''}
+              <div class="flex-row" style="border-top:1px solid var(--surface-border); padding-top:4px; margin-top:4px; font-weight:700; display:flex; justify-content:space-between; align-items:center;">
                 <span>= Effective Cycle Spending:</span>
-                <span class="amount" style="color:var(--danger); font-size:13px">${fmt(effAct)}</span>
+                <span class="amount" style="color:var(--danger); font-size:13px; font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right">${fmt(effAct)}</span>
               </div>
             </div>
             ` : ''}
@@ -2303,20 +2329,25 @@ function renderSummaryReport() {
         </div>
       `;
 
-      // Carried In List (from previous cycle)
+      // Carried In List (from previous cycle) - clean 2-line ledger
       if (carriedIn.length > 0) {
         const carriedInSum = carriedIn.reduce((s, t) => s + (Number(t.amount) || 0), 0);
         cardsHtml += `
           <div class="card" style="margin-bottom:14px; padding:12px; background:rgba(59,130,246,0.06); border:1px solid rgba(59,130,246,0.25); border-radius:12px">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
               <strong>📥 Carried Over From Previous Cycle (${carriedIn.length})</strong>
-              <span class="amount" style="font-weight:700; color:#60a5fa; font-size:14px">+ ${fmt(carriedInSum)}</span>
+              <span class="amount" style="font-weight:700; color:#60a5fa; font-size:14px; white-space:nowrap; font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums">+ ${fmt(carriedInSum)}</span>
             </div>
-            <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
+            <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column;">
               ${carriedIn.map(t => `
-                <div class="flex-row">
-                  <span>${esc(t.source || 'Transaction')} <small style="color:var(--text-muted)">(${parseDateStr(t.timestamp || t.date).toLocaleDateString([], {month:'short', day:'numeric'})} • ${t.kind === 'incoming' ? 'Income' : (t.category || 'Expense')})</small></span>
-                  <strong class="amount" style="color:${t.kind==='incoming'?'var(--success)':'var(--text)'}">${t.kind==='incoming'?'+':''}${fmt(t.amount)}</strong>
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:6px 0; border-bottom:1px solid var(--surface-border)">
+                  <div style="flex:1; min-width:0; padding-right:12px">
+                    <div style="font-weight:600; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${esc(t.source || 'Transaction')}</div>
+                    <div style="font-size:11px; color:var(--text-muted); margin-top:2px">${parseDateStr(t.timestamp || t.date).toLocaleDateString([], {month:'short', day:'numeric'})} • ${t.kind === 'incoming' ? 'Income' : (t.category || 'Expense')}</div>
+                  </div>
+                  <div style="text-align:right; flex-shrink:0">
+                    <strong class="amount" style="font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; font-size:13px; white-space:nowrap; color:${t.kind==='incoming'?'var(--success)':'var(--text)'}">${t.kind==='incoming'?'+ ':''}${fmt(t.amount)}</strong>
+                  </div>
                 </div>
               `).join('')}
             </div>
@@ -2324,20 +2355,25 @@ function renderSummaryReport() {
         `;
       }
 
-      // Deferred Out List (carrying to next cycle)
+      // Deferred Out List (carrying to next cycle) - clean 2-line ledger
       if (carriedOut.length > 0) {
         const carriedOutSum = carriedOut.reduce((s, t) => s + (Number(t.amount) || 0), 0);
         cardsHtml += `
           <div class="card" style="margin-bottom:14px; padding:12px; background:rgba(234,179,8,0.06); border:1px solid rgba(234,179,8,0.25); border-radius:12px">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
               <strong>📤 Deferred to Next Cycle (${carriedOut.length})</strong>
-              <span class="amount" style="font-weight:700; color:#eab308; font-size:14px">${fmt(carriedOutSum)}</span>
+              <span class="amount" style="font-weight:700; color:#eab308; font-size:14px; white-space:nowrap; font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums">${fmt(carriedOutSum)}</span>
             </div>
-            <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px">
+            <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column;">
               ${carriedOut.map(t => `
-                <div class="flex-row">
-                  <span>${esc(t.source || 'Transaction')} <small style="color:var(--text-muted)">(${parseDateStr(t.timestamp || t.date).toLocaleDateString([], {month:'short', day:'numeric'})} • ${t.kind === 'incoming' ? 'Income' : (t.category || 'Expense')})</small></span>
-                  <strong class="amount" style="color:${t.kind==='incoming'?'var(--success)':'var(--text)'}">${t.kind==='incoming'?'+':''}${fmt(t.amount)}</strong>
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:6px 0; border-bottom:1px solid var(--surface-border)">
+                  <div style="flex:1; min-width:0; padding-right:12px">
+                    <div style="font-weight:600; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${esc(t.source || 'Transaction')}</div>
+                    <div style="font-size:11px; color:var(--text-muted); margin-top:2px">${parseDateStr(t.timestamp || t.date).toLocaleDateString([], {month:'short', day:'numeric'})} • ${t.kind === 'incoming' ? 'Income' : (t.category || 'Expense')}</div>
+                  </div>
+                  <div style="text-align:right; flex-shrink:0">
+                    <strong class="amount" style="font-family:'Geist Mono', monospace; font-variant-numeric:tabular-nums; font-size:13px; white-space:nowrap; color:${t.kind==='incoming'?'var(--success)':'var(--text)'}">${t.kind==='incoming'?'+ ':''}${fmt(t.amount)}</strong>
+                  </div>
                 </div>
               `).join('')}
             </div>
@@ -2359,9 +2395,9 @@ function renderSummaryReport() {
     const icon = diff >= 0 ? '✅' : '🔴';
     html += `
       <div class="variance-row">
-        <div>
-          <div class="vr-name">${icon} ${esc(c.name)}</div>
-          <div class="vr-detail"><span class="amount">${fmt(c.planned)}</span> planned • <span class="amount">${fmt(c.actual)}</span> spent</div>
+        <div style="flex:1; min-width:0; padding-right:10px">
+          <div class="vr-name" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${icon} ${esc(c.name)}</div>
+          <div class="vr-detail" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis"><span class="amount">${fmt(c.planned)}</span> plan • <span class="amount">${fmt(c.actual)}</span> act</div>
         </div>
         <div class="vr-diff amount" style="color:${diffColor}">${sign}${fmt(diff)}</div>
       </div>
@@ -2450,8 +2486,8 @@ function renderInsights() {
 function renderHistory() {
   if (!state.dashboard) return;
   
-  let outList = state.dashboard.outgoing;
-  let incList = state.dashboard.incoming;
+  let outList = (state.dashboard.outgoing || []).map(t => ({ ...t, kind: t.kind || 'outgoing' }));
+  let incList = (state.dashboard.incoming || []).map(t => ({ ...t, kind: t.kind || 'incoming' }));
   
   const now = new Date();
   if (state.historyFilter === 'today') {
@@ -2461,6 +2497,7 @@ function renderHistory() {
   } else if (state.historyFilter === 'week') {
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
     outList = outList.filter(t => parseDateStr(t.timestamp || t.date) >= startOfWeek);
     incList = incList.filter(t => parseDateStr(t.timestamp || t.date) >= startOfWeek);
   } else if (state.historyFilter === 'month') {
@@ -2475,7 +2512,7 @@ function renderHistory() {
     incList = incList.filter(t => t.carried_from_prev || parseDateStr(t.timestamp || t.date) >= startOfMonth);
   }
   
-  const q = state.historySearch.toLowerCase();
+  const q = (state.historySearch || '').toLowerCase().trim();
   if (q) {
     const cleanQ = q.replace(/,/g, '').trim();
     const match = t => {
@@ -2491,11 +2528,22 @@ function renderHistory() {
     outList = outList.filter(match);
     incList = incList.filter(match);
   }
+
+  const historyType = state.historyType || 'all';
+  let displayList = [];
+  if (historyType === 'outgoing') {
+    displayList = outList;
+  } else if (historyType === 'incoming') {
+    displayList = incList;
+  } else {
+    displayList = [...outList, ...incList];
+  }
+
   const groupedHtml = (list, context) => {
-    if (!list.length) return '<p style="color:var(--text-muted)">No transactions found.</p>';
+    if (!list.length) return '<p style="color:var(--text-muted); text-align:center; padding:24px 0">No transactions found.</p>';
     
     if (state.historyGroup === 'highest') {
-      const sorted = [...list].sort((a,b) => b.amount - a.amount);
+      const sorted = [...list].sort((a,b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
       return sorted.map(t => generateTxCardHtml(t, context, true)).join('');
     }
     
@@ -2510,7 +2558,7 @@ function renderHistory() {
         else if (d.toDateString() === yesterday.toDateString()) key = 'Yesterday';
         else key = d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
       } else if (state.historyGroup === 'category') {
-        key = t.category || 'Uncategorized';
+        key = t.category || (t.kind === 'incoming' ? 'Income' : 'Uncategorized');
       }
       
       if (!groups[key]) groups[key] = [];
@@ -2533,7 +2581,11 @@ function renderHistory() {
     let html = '';
     for (const k of sortedKeys) {
       const arr = groups[k];
-      if (state.historyGroup === 'category') arr.sort((a,b) => b.amount - a.amount);
+      if (state.historyGroup === 'category') {
+        arr.sort((a,b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
+      } else if (state.historyGroup === 'date') {
+        arr.sort((a,b) => parseDateStr(b.timestamp || b.date) - parseDateStr(a.timestamp || a.date));
+      }
       html += `<div style="margin-top:20px; margin-bottom:8px; font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px">${esc(k)}</div>`;
       html += arr.map(t => generateTxCardHtml(t, context, true)).join('');
     }
@@ -2542,25 +2594,33 @@ function renderHistory() {
   
   const resultsEl = document.getElementById('history-results');
   if (resultsEl) {
-    const total = outList.length + incList.length;
-    const filterText = state.historyFilter === 'all' ? 'All history' : state.historyFilter.charAt(0).toUpperCase() + state.historyFilter.slice(1);
-    const historyMeta = state.dashboard.history || {};
-    const totalText = historyMeta.total > total ? total + ' of ' + historyMeta.total : String(total);
-    resultsEl.textContent = totalText + ' transaction' + (total === 1 ? '' : 's') + ' - ' + filterText + (state.historySearch ? ' - Search: ' + state.historySearch : '');
+    const total = displayList.length;
+    let typeLabel = historyType === 'outgoing' ? 'spending' : historyType === 'incoming' ? 'income' : 'transactions';
+    let filterText = state.historyFilter === 'all' ? 'All Cycle' : state.historyFilter.charAt(0).toUpperCase() + state.historyFilter.slice(1);
+    let summaryText = `${total} ${typeLabel}`;
+    if (historyType === 'all') {
+      summaryText += ` (${outList.length} spending, ${incList.length} income)`;
+    }
+    resultsEl.textContent = `${summaryText} • ${filterText}${q ? ` • Search: "${q}"` : ''}`;
   }
 
   const outEl = document.getElementById('history-outgoing-list');
-  outEl.innerHTML = groupedHtml(outList, 'history');
+  if (outEl) {
+    outEl.innerHTML = groupedHtml(displayList, 'history');
+  }
   
+  const incHeading = document.getElementById('history-incoming-heading');
+  if (incHeading) incHeading.style.display = 'none';
+
   const incEl = document.getElementById('history-incoming-list');
-  incEl.innerHTML = groupedHtml(incList, 'history-inc');
+  if (incEl) {
+    incEl.innerHTML = '';
+    incEl.style.display = 'none';
+  }
 
   const loadMoreEl = document.getElementById('history-load-more');
   if (loadMoreEl) {
-    const historyMeta = state.dashboard.history || {};
-    loadMoreEl.style.display = historyMeta.hasMore ? 'block' : 'none';
-    loadMoreEl.disabled = state.isLoading;
-    loadMoreEl.textContent = state.isLoading ? 'Loading history...' : (historyMeta.hasMore ? 'Load more history' : '');
+    loadMoreEl.style.display = 'none';
   }
   
   document.querySelectorAll('.carry-checkbox').forEach(cb => {
@@ -2583,23 +2643,26 @@ function renderHistory() {
   enhanceTransactionCards();
 }
 
-let searchDebounceTimer = null;
 document.getElementById('history-search').addEventListener('input', (e) => {
-  clearTimeout(searchDebounceTimer);
-  searchDebounceTimer = setTimeout(() => {
-    state.historySearch = e.target.value.trim();
-    resetHistoryPagination();
-    loadData(true);
-  }, 400);
+  state.historySearch = e.target.value;
+  renderHistory();
 });
 
 document.querySelectorAll('#history-filters .pill').forEach(pill => {
   pill.addEventListener('click', (e) => {
     document.querySelectorAll('#history-filters .pill').forEach(p => p.classList.remove('active'));
-    e.target.classList.add('active');
-    state.historyFilter = e.target.dataset.filter;
-    resetHistoryPagination();
-    loadData(true);
+    e.currentTarget.classList.add('active');
+    state.historyFilter = e.currentTarget.dataset.filter;
+    renderHistory();
+  });
+});
+
+document.querySelectorAll('#history-type-filters .pill').forEach(pill => {
+  pill.addEventListener('click', (e) => {
+    document.querySelectorAll('#history-type-filters .pill').forEach(p => p.classList.remove('active'));
+    e.currentTarget.classList.add('active');
+    state.historyType = e.currentTarget.dataset.type || 'all';
+    renderHistory();
   });
 });
 
@@ -3105,9 +3168,7 @@ function openModal(id) {
   activeModalTrigger = document.activeElement;
   modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
-  if (window.AndroidApp && typeof window.AndroidApp.setSwipeRefreshEnabled === 'function') {
-    window.AndroidApp.setSwipeRefreshEnabled(false);
-  }
+  updateAndroidSwipeRefresh();
   const focusable = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
   if (focusable) setTimeout(() => focusable.focus(), 0);
 }
@@ -3121,11 +3182,7 @@ function closeModalForce(id) {
   if (!modal) return;
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
-  if (window.AndroidApp && typeof window.AndroidApp.setSwipeRefreshEnabled === 'function') {
-    if (!document.querySelector('.modal-backdrop.open')) {
-      window.AndroidApp.setSwipeRefreshEnabled(true);
-    }
-  }
+  updateAndroidSwipeRefresh();
   if (activeModalId === id) {
     activeModalId = null;
     if (activeModalTrigger && typeof activeModalTrigger.focus === 'function') activeModalTrigger.focus();

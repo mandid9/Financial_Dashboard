@@ -361,15 +361,8 @@ public class MainActivity extends AppCompatActivity {
 
         // 2. Strictly allow pull-to-refresh ONLY when:
         //    - WebView scroll position is at the very top (scrollY == 0)
-        //    - AND touch started within the top header area (Y <= 220px)
         swipeRefresh.setOnChildScrollUpCallback((parent, child) -> {
-            boolean isScrolledDown = webView.getScrollY() > 0 || webView.canScrollVertically(-1);
-            float headerThresholdPx = android.util.TypedValue.applyDimension(
-                android.util.TypedValue.COMPLEX_UNIT_DIP, 60,
-                getResources().getDisplayMetrics()
-            );
-            boolean isBelowTopHeader = touchStartY > headerThresholdPx;
-            return isScrolledDown || isBelowTopHeader;
+            return webView.getScrollY() > 0 || webView.canScrollVertically(-1);
         });
     }
 

@@ -67,7 +67,11 @@ public class BankParser {
         if (msg == null || msg.isEmpty()) return false;
         return Pattern.compile(
             "عرض خاص|اشحن|احصل على|خصم يصل|لفترة محدودة|كود الخصم|مبروك|وفر مع|استمتع بـ|استمتع بخصم|اشترك الآن|اشترك الان|شحنتك|" +
-            "promo|offer|discount up to|special offer|recharge now|win up to|subscribe now|voucher code|coupon|get free|valid until",
+            "كول تون|رنة المتصل|رنتلي|تجديد رنة|رصيدك الحالي|رصيدك المتاح|متبقي من باقتك|رصيد محفظتك|" +
+            "كود التأكيد|رمز التحقق|رمز الأمان|لا تشارك|استبدل نقاطك|صندوق الهدايا|كاش باك|" +
+            "على النوتة|سلفة|فليكسات|فليكس 80|فليكس 70|فليكس 100|فليكس 200|" +
+            "promo|offer|discount up to|special offer|recharge now|win up to|subscribe now|voucher code|coupon|get free|valid until|" +
+            "call tone|current.*balance|balance is|available balance|otp[:\\s]|verification code|one-time password|reward points",
             Pattern.CASE_INSENSITIVE
         ).matcher(msg).find();
     }
