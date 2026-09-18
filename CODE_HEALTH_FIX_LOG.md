@@ -92,7 +92,7 @@ Verification:
 
 ## Final verification — complete
 
-## Final verification — in progress
+## Final verification — complete
 
 Verification completed:
 
@@ -100,12 +100,12 @@ Verification completed:
 - `npm run build` passed successfully.
 - `git diff --check` passed.
 - Targeted source invariant scan passed: no application `user_id.is.null` fallback remains, exactly one client visibility listener remains, and the old quadratic duplicate-cleanup loop is absent.
-- Build still emits the pre-existing VAPID warning because the configured public key is not URL-safe Base64 without padding; this needs environment/configuration correction.
+- The local redacted VAPID placeholder is now ignored; production still requires a real URL-safe VAPID key.
 
 Remaining limitations deliberately not hidden by this pass:
 
 - Split replacement is safer and compensating, but not a true database transaction. A Supabase RPC/database function is still recommended for strict atomicity under concurrent requests.
-- Dashboard still loads and aggregates the full transaction set in memory; SQL-side pagination/aggregation remains future work.
+- The dashboard now limits normal requests to the target plus five preceding cycles; all-time history still intentionally loads the full history.
 - The 4,600-line static client remains a maintainability hotspot and was not structurally rewritten in this pass.
 - Database RLS policies in `schema_v2_multiuser.sql` still permit null `user_id`; the deployed database migration should make these columns non-null after legacy backfill and remove the null policy branches.
 
@@ -118,3 +118,86 @@ Verification:
 - Owner dashboard query includes only the current owner ID and known legacy owner aliases.
 - `NULL` user records are still excluded.
 - Non-owner dashboard queries remain strictly scoped to their own user ID.
+
+## Step 10 — complete
+
+Added `docs/migrate_legacy_owner_categories.sql`, a repeatable transaction that moves `NULL` records and the three known legacy owner IDs to `kr.wn20@gmail.com`, then reports remaining unowned and owner-owned counts. Updated `docs/migrate_v2_safe.sql` with the same legacy-ID handling.
+
+Verification:
+
+- SQL files contain the same three explicit legacy UUIDs used by the dashboard.
+- Migration fails if the owner account is missing and commits all changes as one transaction.
+- It was not executed from this workspace because only public Supabase configuration is available; run it in Supabase SQL Editor.
+
+## Step 11 — complete
+
+Supabase returned an unterminated dollar-quoted string because the previous script was pasted or processed only partially. Replaced the migration with a shorter version that uses plain SQL statements and no `DO $$` block, avoiding that parser/paste failure.
+
+Verification:
+
+- The replacement contains no dollar-quoted strings.
+- The file remains repeatable and changes only `NULL` rows or the three known legacy owner IDs.
+- Run the entire file in Supabase SQL Editor, then refresh the app.
+
+## Step 12 — complete
+
+Handled redacted/placeholder VAPID environment values as unconfigured, preventing misleading initialization warnings in local builds. Reduced normal dashboard database reads to the target cycle plus five preceding cycles; all-time history remains available through the explicit `all_time` filter.
+
+Verification:
+
+- Placeholder VAPID values no longer reach `webpush.setVapidDetails`.
+- Dashboard filtering is applied in the database before rows are returned.
+- `git diff --check` passed.
+
+## Step 13 — complete
+
+Restricted push-rule evaluation to the fields and two-cycle date range it actually uses, and made the debt-budget update report database failures instead of silently continuing.
+
+Verification:
+
+- Push evaluation no longer selects every transaction column or transaction outside the current/previous cycle window.
+- Debt-budget update errors are now thrown to the action route.
+- `git diff --check` passed.
+
+## Final verification — complete
+
+Final verification result:
+
+- `npm run lint` passed.
+- Sequential `npm run build` passed.
+- VAPID setup warnings are gone when the local placeholder environment is loaded.
+- Dashboard and push evaluation now apply database-side date/column limits.
+- One Next.js build lock message occurred only because verification commands were initially started in parallel; the sequential rerun passed.
+
+## Review of reported follow-up changes — 2026-09-18
+
+All seven reported changes are present and correctly implemented:
+
+1. Dashboard owner backfill `UPDATE` calls are removed from GET requests. Pass.
+2. The hardcoded `lt('amount', 200000)` filter is removed. Pass. Normal dashboard requests now use cycle-date filtering instead.
+3. Clean Duplicates calls `server('cleanDuplicates')`; the old undefined `api()` call is gone. Pass.
+4. Webhook transaction paths pass the computed `txDate`; no undeclared `now` variable remains. The remaining text match for `now` is inside the promotional-message regex (`subscribe now`). Pass.
+5. `handleDebitCardSms` and `handleCreditCardSms` are removed and have no remaining references. Pass.
+6. Dashboard loading stores `data.webhookToken` in `state.webhookToken` and still syncs Android. Pass.
+7. Debt modal text is `Paid`; `Payed` no longer appears. Pass.
+
+Verification for this review:
+
+- `npm run lint` passed with no reported errors or warnings.
+- `npm run build` passed successfully.
+- `git diff --check` passed.
+- Targeted source scans confirmed all seven conditions.
+
+## Step 14 — complete
+
+After legacy migration, removed the two other account IDs from the owner dashboard’s read scope. The dashboard now reads only the authenticated user’s records, so future transactions belonging to `cap.k53@gmail.com` or `shimaamuhammed177@gmail.com` cannot appear in the owner dashboard. Existing rows already moved by the earlier migration are unchanged.
+
+Verification:
+
+- Dashboard category and transaction queries use only `eq('user_id', user.id)`.
+- No owner alias list remains in `dashboard/route.js`.
+- `git diff --check` passed.
+
+## Plan created
+
+Remaining work is prioritized in [REMAINING_FIX_PLAN.md](REMAINING_FIX_PLAN.md), covering atomic splits, RLS confirmation, SQL aggregation, refresh cancellation, production push configuration, frontend modularization, tests, error handling, and documentation cleanup.

@@ -262,7 +262,7 @@ export async function POST(req) {
         const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
         return await queuePending(body, amount, 'Bank Transfer — Salary', 'incoming', userId, idempotencyKey);
       }
-      return await handleSalarySms(body, now, userId);
+      return await handleSalarySms(body, txDate, userId);
     }
 
     // 2. Instapay Transfer Sent (Outgoing Expense)
@@ -272,7 +272,7 @@ export async function POST(req) {
       const fromMatch = body.match(/(?:from|to|إلى)\s+([^\s,]+)/i);
       const source = `Instapay Sent${fromMatch ? ` (${fromMatch[1]})` : ''}`;
       if (isPendingQueue) return await queuePending(body, amount, source, 'outgoing', userId, idempotencyKey);
-      return await handleInstapaySent(body, now, userId, customCategory);
+      return await handleInstapaySent(body, txDate, userId, customCategory);
     }
 
     // 3. Instapay Transfer Received (Incoming Income)
@@ -282,7 +282,7 @@ export async function POST(req) {
       const fromMatch = body.match(/(?:from|من)\s+([^\s,]+)/i);
       const source = `Instapay Received${fromMatch ? ` from ${fromMatch[1]}` : ''}`;
       if (isPendingQueue) return await queuePending(body, amount, source, 'incoming', userId, idempotencyKey);
-      return await handleInstapayReceived(body, now, userId);
+      return await handleInstapayReceived(body, txDate, userId);
     }
 
     // 4. Card Purchases (NBE, CIB, Banque Misr, QNB, etc.)
@@ -298,7 +298,7 @@ export async function POST(req) {
 
       if (amount > 0) {
         if (isPendingQueue) return await queuePending(body, amount, merchant, 'outgoing', userId, idempotencyKey);
-        return await insertOutgoing(amount, merchant, 'Card Purchase', now, userId, customCategory);
+        return await insertOutgoing(amount, merchant, 'Card Purchase', txDate, userId, customCategory);
       }
     }
 
@@ -316,18 +316,18 @@ export async function POST(req) {
             amount: amount,
             source_or_merchant: merchant,
             note: 'Mobile Wallet',
-            transaction_date: now
+            transaction_date: txDate
           }]);
           if (error) throw error;
           return new NextResponse('Success: Wallet incoming logged', { status: 200 });
         }
-        return await insertOutgoing(amount, merchant, 'Mobile Wallet', now, userId, customCategory);
+        return await insertOutgoing(amount, merchant, 'Mobile Wallet', txDate, userId, customCategory);
       }
     }
 
     // 6. Reversals / Refunds
     if (/Reversed|Refunded|استرجاع|رد مبلغ/i.test(body)) {
-      return await handleReversal(body, now, userId);
+      return await handleReversal(body, txDate, userId);
     }
 
     // 7. Universal Smart Fallback (Any message with an amount & financial keyword)
@@ -350,12 +350,12 @@ export async function POST(req) {
             amount: amount,
             source_or_merchant: merchant,
             note: 'Bank SMS',
-            transaction_date: now
+            transaction_date: txDate
           }]);
           if (error) throw error;
           return new NextResponse('Success: Fallback incoming logged', { status: 200 });
         }
-        return await insertOutgoing(amount, merchant, 'Bank SMS', now, userId, customCategory);
+        return await insertOutgoing(amount, merchant, 'Bank SMS', txDate, userId, customCategory);
       }
     }
 
@@ -459,34 +459,6 @@ async function handleInstapayReceived(message, time, userId) {
   }, userId).catch(e => console.warn('Push error:', e));
 
   return new NextResponse('Success: Instapay income logged', { status: 200 });
-}
-
-async function handleDebitCardSms(message, time, userId, customCategory) {
-  const cardMatch = message.match(/Debit Card\s*([^\s]+)/i);
-  const cardStr = cardMatch ? `Debit Card ${cardMatch[1]}` : 'Debit Card';
-
-  const amtMatch = message.match(/transaction of EGP\s*([\d,.]+)/i) || message.match(/EGP\s*([\d,.]+)/i);
-  if (!amtMatch) return new NextResponse('Could not parse Debit card amount', { status: 400 });
-  const amount = parseFloat(amtMatch[1].replace(/,/g, ''));
-
-  const merchMatch = message.match(/@([^,]+),?/);
-  const merchant = merchMatch ? merchMatch[1].trim() : cardStr;
-
-  return await insertOutgoing(amount, merchant, cardStr, time, userId, customCategory);
-}
-
-async function handleCreditCardSms(message, time, userId, customCategory) {
-  const cardMatch = message.match(/Credit Card\s*([^\s]+)/i);
-  const cardStr = cardMatch ? `Credit Card ${cardMatch[1]}` : 'Credit Card';
-
-  const amtMatch = message.match(/transaction of EGP\s*([\d,.]+)/i) || message.match(/EGP\s*([\d,.]+)/i);
-  if (!amtMatch) return new NextResponse('Could not parse Credit card amount', { status: 400 });
-  const amount = parseFloat(amtMatch[1].replace(/,/g, ''));
-
-  const merchMatch = message.match(/@([^,]+),?/);
-  const merchant = merchMatch ? merchMatch[1].trim() : cardStr;
-
-  return await insertOutgoing(amount, merchant, cardStr, time, userId, customCategory);
 }
 
 async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, categoryId = null) {

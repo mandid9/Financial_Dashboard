@@ -1419,7 +1419,7 @@
       <button class="alt" style="padding:14px; text-align:left; display:flex; align-items:center; gap:12px; border:1px solid rgba(34,197,94,0.4)" onclick="resolveDebtChoice('paid')">
         <span style="font-size:24px">💵</span>
         <div>
-          <strong style="display:block; font-size:15px; color:#4ade80">Payed</strong>
+          <strong style="display:block; font-size:15px; color:#4ade80">Paid</strong>
           <small style="opacity:0.8; font-size:11px">Cutting off the debt limit (repayment)</small>
         </div>
       </button>
@@ -1722,7 +1722,10 @@ async function logout() {
     if (window.AndroidApp && typeof window.AndroidApp.clearUserSession === 'function') {
       window.AndroidApp.clearUserSession();
     }
-  } catch (e) {}
+  if (dashboardAbortController) {
+    dashboardAbortController.abort();
+    dashboardAbortController = null;
+  }
   state.dashboard = null;
   state.budget = null;
   await fetch('/api/auth', { method: 'DELETE' });
@@ -1757,6 +1760,8 @@ function server(fnName, args = [], onSuccess = null, loadingMsg = null) {
   });
 }
 
+let dashboardAbortController = null;
+
 async function loadData(silent = false) {
   const cacheKey = dashboardCacheKey();
   // 1. Instant Cache-First Paint: If first load, render cached dashboard immediately
@@ -1775,7 +1780,13 @@ async function loadData(silent = false) {
     } catch (e) {}
   }
 
-  if (state.isLoading) return;
+  if (dashboardAbortController) {
+    dashboardAbortController.abort();
+    dashboardAbortController = null;
+  }
+  const abortCtrl = new AbortController();
+  dashboardAbortController = abortCtrl;
+
   state.isLoading = true;
   const historyResultsEl = document.getElementById('history-results');
   if (historyResultsEl) historyResultsEl.setAttribute('aria-busy', 'true');
@@ -1787,14 +1798,17 @@ async function loadData(silent = false) {
   
   try {
     if (!state.historyAppend) state.historyPage = 1;
-    const res = await fetch('/api/dashboard?cycleOffset=' + state.cycleOffset + '&historyPage=' + state.historyPage + '&historyPageSize=' + state.historyPageSize + '&historyFilter=' + encodeURIComponent(state.historyFilter) + '&historySearch=' + encodeURIComponent(state.historySearch) + '&t=' + Date.now(), { cache: 'no-store' });
+    const res = await fetch('/api/dashboard?cycleOffset=' + state.cycleOffset + '&historyPage=' + state.historyPage + '&historyPageSize=' + state.historyPageSize + '&historyFilter=' + encodeURIComponent(state.historyFilter) + '&historySearch=' + encodeURIComponent(state.historySearch) + '&t=' + Date.now(), { cache: 'no-store', signal: abortCtrl.signal });
     if (res.status === 401) { showLogin('Your session has expired. Please sign in again.'); return; }
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     
-    // Sync Webhook Token with Android App
-    if (data.webhookToken && window.AndroidApp && typeof window.AndroidApp.setWebhookToken === 'function') {
-      window.AndroidApp.setWebhookToken(data.webhookToken);
+    // Sync Webhook Token with state and Android App
+    if (data.webhookToken) {
+      state.webhookToken = data.webhookToken;
+      if (window.AndroidApp && typeof window.AndroidApp.setWebhookToken === 'function') {
+        window.AndroidApp.setWebhookToken(data.webhookToken);
+      }
     }
 
     state.cycle = data.cycle;
@@ -1837,9 +1851,13 @@ async function loadData(silent = false) {
     renderAll();
     return true;
   } catch(e) {
+    if (e.name === 'AbortError') return false;
     console.error(e);
     if (!silent) toast('Error: ' + (e.message || e), 'error');
   } finally {
+    if (dashboardAbortController === abortCtrl) {
+      dashboardAbortController = null;
+    }
     state.isLoading = false;
     const historyResultsEl = document.getElementById('history-results');
     if (historyResultsEl) historyResultsEl.setAttribute('aria-busy', 'false');
@@ -4360,7 +4378,7 @@ async function cleanDuplicateTransactionsFromUI() {
   if (!confirm('Scan and delete duplicate transactions (same amount and kind within 24 hours)?')) return;
   try {
     toast('Cleaning duplicate transactions...', 'info');
-    const res = await api('cleanDuplicates');
+    const res = await server('cleanDuplicates');
     if (res && res.success) {
       toast(`✅ Cleaned ${res.removedCount || 0} duplicate transaction(s)!`, 'success');
       await loadData(true);

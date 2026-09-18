@@ -1,8 +1,13 @@
 import webpush from 'web-push';
 import { supabase } from '@/lib/supabase';
 
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY || '';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+function usableEnvValue(value) {
+  if (!value || value.includes('[SENSITIVE]')) return '';
+  return value.trim();
+}
+
+const VAPID_PUBLIC_KEY = usableEnvValue(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY);
+const VAPID_PRIVATE_KEY = usableEnvValue(process.env.VAPID_PRIVATE_KEY);
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:kr.wn20@gmail.com';
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
@@ -101,8 +106,12 @@ export async function evaluateAndDispatchTriggers(forceDaily = false, targetUser
     if (prevM < 0) { prevM = 11; prevY -= 1; }
     const prevCycleStart = new Date(prevY, prevM, cycleStartDay, 0, 0, 0);
 
-    let catQuery = supabase.from('categories').select('*');
-    let txQuery = supabase.from('transactions').select('*');
+    let catQuery = supabase.from('categories').select('id, name, planned_amount');
+    let txQuery = supabase
+      .from('transactions')
+      .select('kind, amount, transaction_date, is_carried_forward, category_id')
+      .gte('transaction_date', prevCycleStart.toISOString())
+      .lt('transaction_date', currentCycleEnd.toISOString());
     if (targetUserId) {
       catQuery = catQuery.eq('user_id', targetUserId);
       txQuery = txQuery.eq('user_id', targetUserId);

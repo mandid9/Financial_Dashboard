@@ -57,9 +57,24 @@ DECLARE
 BEGIN
   SELECT id INTO v_user FROM auth.users WHERE email = 'kr.wn20@gmail.com' LIMIT 1;
   IF v_user IS NOT NULL THEN
-    UPDATE public.categories         SET user_id = v_user WHERE user_id IS NULL;
-    UPDATE public.transactions       SET user_id = v_user WHERE user_id IS NULL;
-    UPDATE public.push_subscriptions SET user_id = v_user WHERE user_id IS NULL;
+    UPDATE public.categories SET user_id = v_user
+    WHERE user_id IS NULL OR user_id IN (
+      '5aa42527-12fc-448a-a108-70531f3c5607'::uuid,
+      '2463bf7f-f454-454f-b8bc-b8328f85069b'::uuid,
+      '7d88ef85-b3e7-4eb5-a00d-1c61a6bb0d28'::uuid
+    );
+    UPDATE public.transactions SET user_id = v_user
+    WHERE user_id IS NULL OR user_id IN (
+      '5aa42527-12fc-448a-a108-70531f3c5607'::uuid,
+      '2463bf7f-f454-454f-b8bc-b8328f85069b'::uuid,
+      '7d88ef85-b3e7-4eb5-a00d-1c61a6bb0d28'::uuid
+    );
+    UPDATE public.push_subscriptions SET user_id = v_user
+    WHERE user_id IS NULL OR user_id IN (
+      '5aa42527-12fc-448a-a108-70531f3c5607'::uuid,
+      '2463bf7f-f454-454f-b8bc-b8328f85069b'::uuid,
+      '7d88ef85-b3e7-4eb5-a00d-1c61a6bb0d28'::uuid
+    );
     INSERT INTO public.user_webhook_tokens (user_id)
     VALUES (v_user)
     ON CONFLICT (user_id) DO NOTHING;

@@ -14,6 +14,9 @@ export async function GET(req) {
     const historyPage = Number.isFinite(requestedHistoryPage) ? Math.max(1, requestedHistoryPage) : 1;
     const requestedHistoryPageSize = parseInt(searchParams.get('historyPageSize') || '100', 10);
     const historyPageSize = Number.isFinite(requestedHistoryPageSize) ? Math.min(200, Math.max(1, requestedHistoryPageSize)) : 100;
+    const requestedHistoryFilter = searchParams.get('historyFilter') || 'all';
+    const historyFilter = ['all', 'all_time', 'today', 'week', 'month'].includes(requestedHistoryFilter) ? requestedHistoryFilter : 'all';
+    const historySearch = (searchParams.get('historySearch') || '').trim().toLowerCase();
     const now = new Date();
     const cycleStartDay = 20;
 
@@ -29,20 +32,6 @@ export async function GET(req) {
     }
 
     const isOwner = user.email === 'kr.wn20@gmail.com';
-    const ownerAliases = [user.id, '5aa42527-12fc-448a-a108-70531f3c5607', '2463bf7f-f454-454f-b8bc-b8328f85069b', '7d88ef85-b3e7-4eb5-a00d-1c61a6bb0d28'];
-
-    // If primary owner, ensure legacy unassigned records and owner aliases are locked to owner's active user_id
-    if (isOwner) {
-      await Promise.all([
-        supabase.from('categories').update({ user_id: user.id }).in('user_id', ownerAliases),
-        supabase.from('transactions').update({ user_id: user.id }).in('user_id', ownerAliases),
-        supabase.from('categories').update({ user_id: user.id }).is('user_id', null),
-        supabase.from('transactions').update({ user_id: user.id }).is('user_id', null),
-        supabase.from('push_subscriptions').update({ user_id: user.id }).is('user_id', null)
-      ]).catch(e => console.warn('Auto-backfill notice:', e.message));
-    }
-
-
 
     // Ensure user has a persistent webhook token
     let userWebhookToken = null;
@@ -106,11 +95,7 @@ export async function GET(req) {
       .select('id, name, planned_amount, sort_order')
       .order('sort_order', { ascending: true });
 
-    if (isOwner) {
-      catQuery = catQuery.or(`user_id.eq.${user.id},user_id.in.(${ownerAliases.join(',')})`);
-    } else {
-      catQuery = catQuery.eq('user_id', user.id);
-    }
+    catQuery = catQuery.eq('user_id', user.id);
 
     let { data: categories, error: catError } = await catQuery;
     if (catError) throw catError;
@@ -146,12 +131,13 @@ export async function GET(req) {
       .select('id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id, categories(name)')
       .order('transaction_date', { ascending: false });
 
-    if (isOwner) {
-      txQuery = txQuery.or(`user_id.eq.${user.id},user_id.in.(${ownerAliases.join(',')})`);
-    } else {
-      txQuery = txQuery.eq('user_id', user.id);
+    txQuery = txQuery.eq('user_id', user.id);
+    // Current/filtered views and the four historical summaries only need the
+    // target cycle plus five preceding cycles. Keep all-time history explicit
+    // so the common dashboard request does not load the entire table.
+    if (historyFilter !== 'all_time') {
+      txQuery = txQuery.gte('transaction_date', getCycleBounds(cycleOffset - 5).start.toISOString());
     }
-    txQuery = txQuery.lt('amount', 200000);
 
     const { data: allTransactions, error: txError } = await txQuery;
     if (txError) throw txError;
@@ -418,9 +404,6 @@ export async function GET(req) {
 
     const carriedTransactions = carriedOutTransactions;
 
-    const requestedHistoryFilter = searchParams.get('historyFilter') || 'all';
-    const historyFilter = ['all', 'today', 'week', 'month'].includes(requestedHistoryFilter) ? requestedHistoryFilter : 'all';
-    const historySearch = (searchParams.get('historySearch') || '').trim().toLowerCase();
     const allFormattedHistoryItems = (allTransactions || []).map(t => {
       const catName = (t.category_id && catMap[t.category_id])
         ? catMap[t.category_id].name

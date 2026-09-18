@@ -76,10 +76,11 @@ export async function POST(req) {
           if (debtCat) {
             const currentPlan = Number(debtCat.planned_amount) || 0;
             const newPlan = Math.max(0, currentPlan - reduceDebtAmount);
-            await supabase
+            const { error: debtUpdateError } = await supabase
               .from('categories')
               .update({ planned_amount: newPlan })
               .eq('id', debtCat.id);
+            if (debtUpdateError) throw debtUpdateError;
           }
         }
 
