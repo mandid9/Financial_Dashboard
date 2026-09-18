@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { evaluateAndDispatchTriggers } from '@/lib/push';
 import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
 
-async function getCategoryIdByName(rawName, userId, isOwner = false) {
+async function getCategoryIdByName(rawName, userId) {
   if (!rawName) return null;
   const clean = String(rawName)
     .replace(/&amp;/g, '&')
@@ -18,21 +18,13 @@ async function getCategoryIdByName(rawName, userId, isOwner = false) {
 
   // 1. Try exact match
   let exactQuery = supabase.from('categories').select('id').eq('name', clean);
-  if (isOwner) {
-    exactQuery = exactQuery.or(`user_id.eq.${userId},user_id.is.null`);
-  } else {
-    exactQuery = exactQuery.eq('user_id', userId);
-  }
+  exactQuery = exactQuery.eq('user_id', userId);
   const { data: catExact } = await exactQuery.maybeSingle();
   if (catExact) return catExact.id;
 
   // 2. Try case-insensitive match
   let ilikeQuery = supabase.from('categories').select('id').ilike('name', clean);
-  if (isOwner) {
-    ilikeQuery = ilikeQuery.or(`user_id.eq.${userId},user_id.is.null`);
-  } else {
-    ilikeQuery = ilikeQuery.eq('user_id', userId);
-  }
+  ilikeQuery = ilikeQuery.eq('user_id', userId);
   const { data: catIlike } = await ilikeQuery.maybeSingle();
   if (catIlike) return catIlike.id;
 
@@ -54,7 +46,6 @@ export async function POST(req) {
   const user = await getAuthenticatedUser(req);
   if (!user) return unauthorizedResponse();
   const userId = user.id;
-  const isOwner = user.email === 'kr.wn20@gmail.com';
 
   try {
     const body = await req.json().catch(() => null);
@@ -70,7 +61,7 @@ export async function POST(req) {
     switch (action) {
       case 'saveCategory': {
         const [id, catName, reduceDebtAmount] = args;
-        const catId = await getCategoryIdByName(catName, userId, isOwner);
+        const catId = await getCategoryIdByName(catName, userId);
 
         if (typeof reduceDebtAmount === 'number' && reduceDebtAmount > 0) {
           let debtQuery = supabase
@@ -78,11 +69,7 @@ export async function POST(req) {
             .select('id, planned_amount')
             .ilike('name', 'debt');
 
-          if (isOwner) {
-            debtQuery = debtQuery.or(`user_id.eq.${userId},user_id.is.null`);
-          } else {
-            debtQuery = debtQuery.eq('user_id', userId);
-          }
+          debtQuery = debtQuery.eq('user_id', userId);
 
           const { data: debtCat } = await debtQuery.maybeSingle();
 
@@ -101,11 +88,7 @@ export async function POST(req) {
           .update({ category_id: catId })
           .eq('id', id);
 
-        if (isOwner) {
-          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
-          updateQuery = updateQuery.eq('user_id', userId);
-        }
+        updateQuery = updateQuery.eq('user_id', userId);
 
         const { error } = await updateQuery;
         if (error) throw error;
@@ -122,11 +105,7 @@ export async function POST(req) {
           .update({ note: cleanNote })
           .eq('id', id);
 
-        if (isOwner) {
-          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
-          updateQuery = updateQuery.eq('user_id', userId);
-        }
+        updateQuery = updateQuery.eq('user_id', userId);
 
         const { error } = await updateQuery;
         if (error) throw error;
@@ -141,11 +120,7 @@ export async function POST(req) {
           .update({ source_or_merchant: cleanSrc })
           .eq('id', id);
 
-        if (isOwner) {
-          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
-          updateQuery = updateQuery.eq('user_id', userId);
-        }
+        updateQuery = updateQuery.eq('user_id', userId);
 
         const { error } = await updateQuery;
         if (error) throw error;
@@ -159,11 +134,7 @@ export async function POST(req) {
           .delete()
           .eq('id', id);
 
-        if (isOwner) {
-          delQuery = delQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
-          delQuery = delQuery.eq('user_id', userId);
-        }
+        delQuery = delQuery.eq('user_id', userId);
 
         const { error } = await delQuery;
         if (error) throw error;
@@ -177,9 +148,7 @@ export async function POST(req) {
           .update({ is_carried_forward: !!isCarried })
           .eq('id', id);
 
-        if (!isOwner) {
-          updateQuery = updateQuery.eq('user_id', userId);
-        }
+        updateQuery = updateQuery.eq('user_id', userId);
 
         const { error } = await updateQuery;
         if (error) throw error;
@@ -192,7 +161,7 @@ export async function POST(req) {
         if (amount === null || amount <= 0) {
           return NextResponse.json({ error: 'Valid positive amount is required' }, { status: 400 });
         }
-        const catId = await getCategoryIdByName(catName, userId, isOwner);
+        const catId = await getCategoryIdByName(catName, userId);
         const { error } = await supabase.from('transactions').insert([{
           user_id: userId,
           kind: 'outgoing',
@@ -229,47 +198,67 @@ export async function POST(req) {
 
       case 'splitTransaction': {
         const [id, parts] = args;
+        if (!Array.isArray(parts) || parts.length < 2) {
+          return NextResponse.json({ error: 'At least two split parts are required' }, { status: 400 });
+        }
+
+        const normalizedParts = parts.map(part => ({
+          category: sanitizeStr(part?.category, 200),
+          amount: parseValidAmount(part?.amount)
+        }));
+        if (normalizedParts.some(part => part.amount === null || part.amount <= 0)) {
+          return NextResponse.json({ error: 'Each split part must have a positive valid amount' }, { status: 400 });
+        }
+
         let selectQuery = supabase
           .from('transactions')
           .select('*')
           .eq('id', id);
 
-        if (isOwner) {
-          selectQuery = selectQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
-          selectQuery = selectQuery.eq('user_id', userId);
-        }
+        selectQuery = selectQuery.eq('user_id', userId);
 
         const { data: orig, error: fetchErr } = await selectQuery.single();
         if (fetchErr) throw fetchErr;
         if (!orig) throw new Error('Transaction not found');
 
-        let delQuery = supabase
-          .from('transactions')
-          .delete()
-          .eq('id', id);
-
-        if (isOwner) {
-          delQuery = delQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
-          delQuery = delQuery.eq('user_id', userId);
+        const originalCents = Math.round(Number(orig.amount) * 100);
+        const splitCents = normalizedParts.reduce((sum, part) => sum + Math.round(part.amount * 100), 0);
+        if (!Number.isFinite(originalCents) || splitCents !== originalCents) {
+          return NextResponse.json({ error: 'Split amounts must equal the original transaction amount' }, { status: 400 });
         }
 
-        const { error: delErr } = await delQuery;
-        if (delErr) throw delErr;
-
-        for (const p of parts) {
-          const catId = await getCategoryIdByName(p.category, userId, isOwner);
-          const { error: insErr } = await supabase.from('transactions').insert([{
+        const replacementRows = [];
+        for (const part of normalizedParts) {
+          const catId = await getCategoryIdByName(part.category, userId);
+          replacementRows.push({
             user_id: userId,
             kind: orig.kind,
-            amount: p.amount,
+            amount: part.amount,
             source_or_merchant: orig.source_or_merchant,
             note: 'Split | ' + (orig.note || ''),
             transaction_date: orig.transaction_date,
-            category_id: catId
-          }]);
-          if (insErr) throw insErr;
+            category_id: catId,
+            is_carried_forward: !!orig.is_carried_forward
+          });
+        }
+
+        const { data: insertedRows, error: insertErr } = await supabase
+          .from('transactions')
+          .insert(replacementRows)
+          .select('id');
+        if (insertErr) throw insertErr;
+
+        const { error: deleteErr } = await supabase
+          .from('transactions')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', userId);
+        if (deleteErr) {
+          const insertedIds = (insertedRows || []).map(row => row.id).filter(Boolean);
+          if (insertedIds.length > 0) {
+            await supabase.from('transactions').delete().in('id', insertedIds).eq('user_id', userId);
+          }
+          throw deleteErr;
         }
         return NextResponse.json({ success: true });
       }
@@ -292,11 +281,7 @@ export async function POST(req) {
           .update({ planned_amount: planned })
           .eq('name', name);
 
-        if (isOwner) {
-          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
-          updateQuery = updateQuery.eq('user_id', userId);
-        }
+        updateQuery = updateQuery.eq('user_id', userId);
 
         const { error } = await updateQuery;
         if (error) throw error;
@@ -310,11 +295,7 @@ export async function POST(req) {
           .update({ name: newName })
           .eq('name', oldName);
 
-        if (isOwner) {
-          updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
-          updateQuery = updateQuery.eq('user_id', userId);
-        }
+        updateQuery = updateQuery.eq('user_id', userId);
 
         const { error } = await updateQuery;
         if (error) throw error;
@@ -328,11 +309,7 @@ export async function POST(req) {
           .delete()
           .eq('name', name);
 
-        if (isOwner) {
-          delQuery = delQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        } else {
-          delQuery = delQuery.eq('user_id', userId);
-        }
+        delQuery = delQuery.eq('user_id', userId);
 
         const { error } = await delQuery;
         if (error) throw error;
@@ -347,25 +324,26 @@ export async function POST(req) {
           .order('transaction_date', { ascending: true });
 
         const toDelete = [];
-        if (allTxs && allTxs.length > 1) {
-          for (let i = 0; i < allTxs.length; i++) {
-            for (let j = i + 1; j < allTxs.length; j++) {
-              if (toDelete.includes(allTxs[j].id)) continue;
-              if (
-                allTxs[i].kind === allTxs[j].kind &&
-                Math.abs(Number(allTxs[i].amount) - Number(allTxs[j].amount)) < 0.01
-              ) {
-                const diff = Math.abs(new Date(allTxs[i].transaction_date) - new Date(allTxs[j].transaction_date));
-                if (diff <= 24 * 3600 * 1000) {
-                  toDelete.push(allTxs[j].id);
-                }
-              }
-            }
+        const lastSeen = new Map();
+        const duplicateWindow = 24 * 3600 * 1000;
+        for (const tx of allTxs || []) {
+          const key = `${tx.kind}:${Math.round(Number(tx.amount) * 100)}`;
+          const timestamp = new Date(tx.transaction_date).getTime();
+          const previousTimestamp = lastSeen.get(key);
+          if (previousTimestamp !== undefined && timestamp - previousTimestamp <= duplicateWindow) {
+            toDelete.push(tx.id);
+          } else {
+            lastSeen.set(key, timestamp);
           }
         }
 
         if (toDelete.length > 0) {
-          await supabase.from('transactions').delete().in('id', toDelete);
+          const { error: deleteError } = await supabase
+            .from('transactions')
+            .delete()
+            .in('id', toDelete)
+            .eq('user_id', userId);
+          if (deleteError) throw deleteError;
         }
 
         return NextResponse.json({ success: true, removedCount: toDelete.length });
@@ -380,11 +358,7 @@ export async function POST(req) {
               .update({ is_carried_forward: true })
               .eq('id', item.row);
 
-            if (isOwner) {
-              updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
-            } else {
-              updateQuery = updateQuery.eq('user_id', userId);
-            }
+            updateQuery = updateQuery.eq('user_id', userId);
 
             const { error } = await updateQuery;
             if (error) throw error;
@@ -396,11 +370,7 @@ export async function POST(req) {
             .select('id, name')
             .ilike('name', 'debt');
 
-          if (isOwner) {
-            debtQuery = debtQuery.or(`user_id.eq.${userId},user_id.is.null`);
-          } else {
-            debtQuery = debtQuery.eq('user_id', userId);
-          }
+          debtQuery = debtQuery.eq('user_id', userId);
 
           const { data: debtCat } = await debtQuery.maybeSingle();
 
@@ -422,11 +392,7 @@ export async function POST(req) {
             .update({ sort_order: i })
             .eq('id', orderedIds[i]);
 
-          if (isOwner) {
-            updateQuery = updateQuery.or(`user_id.eq.${userId},user_id.is.null`);
-          } else {
-            updateQuery = updateQuery.eq('user_id', userId);
-          }
+          updateQuery = updateQuery.eq('user_id', userId);
 
           const { error } = await updateQuery;
           if (error) throw error;

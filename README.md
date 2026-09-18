@@ -1,8 +1,12 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Finance Dashboard
 
-## Getting Started
+Personal finance dashboard built with Next.js, Supabase, a static browser client, and an optional Android SMS companion.
 
-First, run the development server:
+The browser application lives in `public/index.html`; server API routes live under `src/app/api`; the Android companion is under `android/`.
+
+## Development
+
+Install dependencies and run the development server:
 
 ```bash
 npm run dev
@@ -14,7 +18,7 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open <http://localhost:3000> to use the dashboard.
 
 You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
 

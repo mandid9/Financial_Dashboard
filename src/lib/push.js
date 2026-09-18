@@ -26,7 +26,7 @@ export async function sendPushToAll(payload, targetUserId = null) {
   try {
     let query = supabase.from('push_subscriptions').select('*');
     if (targetUserId) {
-      query = query.or(`user_id.eq.${targetUserId},user_id.is.null`);
+      query = query.eq('user_id', targetUserId);
     }
 
     const { data: dbSubs, error } = await query;
@@ -104,8 +104,8 @@ export async function evaluateAndDispatchTriggers(forceDaily = false, targetUser
     let catQuery = supabase.from('categories').select('*');
     let txQuery = supabase.from('transactions').select('*');
     if (targetUserId) {
-      catQuery = catQuery.or(`user_id.eq.${targetUserId},user_id.is.null`);
-      txQuery = txQuery.or(`user_id.eq.${targetUserId},user_id.is.null`);
+      catQuery = catQuery.eq('user_id', targetUserId);
+      txQuery = txQuery.eq('user_id', targetUserId);
     }
 
     const { data: categories } = await catQuery;

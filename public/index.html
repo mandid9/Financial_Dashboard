@@ -1480,6 +1480,10 @@ const state = {
   smsRuleEditingId: null
 };
 
+function dashboardCacheKey() {
+  return state.user?.id ? `cached_dashboard_data:${state.user.id}` : null;
+}
+
 // --- 10. UTILITIES ---
 function fmt(num) {
   if (isNaN(num)) return 'EGP 0.00';
@@ -1710,6 +1714,8 @@ async function login(event) {
 
 async function logout() {
   try {
+    const cacheKey = dashboardCacheKey();
+    if (cacheKey) localStorage.removeItem(cacheKey);
     localStorage.removeItem('cached_dashboard_data');
     localStorage.removeItem('custom_sms_rules');
     sessionStorage.clear();
@@ -1752,10 +1758,11 @@ function server(fnName, args = [], onSuccess = null, loadingMsg = null) {
 }
 
 async function loadData(silent = false) {
+  const cacheKey = dashboardCacheKey();
   // 1. Instant Cache-First Paint: If first load, render cached dashboard immediately
   if (!state.dashboard && !state.historyAppend) {
     try {
-      const cachedStr = localStorage.getItem('cached_dashboard_data');
+      const cachedStr = cacheKey ? localStorage.getItem(cacheKey) : null;
       if (cachedStr) {
         const cached = JSON.parse(cachedStr);
         if (cached && cached.cycle && cached.dashboard && cached.budget) {
@@ -1814,7 +1821,7 @@ async function loadData(silent = false) {
     // Cache latest state for instant 0ms startup
     if (state.cycleOffset === 0 && (!state.historyFilter || state.historyFilter === 'month') && !state.historySearch) {
       try {
-        localStorage.setItem('cached_dashboard_data', JSON.stringify({
+        if (cacheKey) localStorage.setItem(cacheKey, JSON.stringify({
           cycle: data.cycle,
           dashboard: data.dashboard,
           budget: data.budget
@@ -1886,7 +1893,7 @@ async function loadMoreHistory() {
 
 // Smart Visibility-Aware Polling (Pauses when screen is off / tab hidden, saves battery & network)
 setInterval(() => {
-  if (document.visibilityState === 'visible') {
+  if (document.visibilityState === 'visible' && state.user && !state.isLoading) {
     loadData(true);
   }
 }, 60000);
@@ -4116,12 +4123,6 @@ window.onAppResume = function() {
     loadData(true);
   }
 };
-
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.user && !state.isLoading) {
-    loadData(true);
-  }
-});
 
 // Kickoff
 window.onload = async () => {

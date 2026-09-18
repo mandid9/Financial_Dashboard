@@ -141,21 +141,25 @@ export async function POST(req) {
     // 0. If already parsed by Android Companion App, insert directly with deduplication!
     if (directAmount && directAmount > 0) {
       if (directKind === 'incoming') {
-        // Robust 24-hour deduplication window by amount, kind, and user
+        // Prefer the caller-provided idempotency key. Fall back to a narrow
+        // amount/source/time fingerprint so two legitimate daily payments are
+        // not silently treated as duplicates.
         const txTimeMs = new Date(txDate).getTime();
-        const win = 24 * 3600 * 1000;
+        const win = 5 * 60 * 1000;
         const minDate = new Date(txTimeMs - win).toISOString();
         const maxDate = new Date(txTimeMs + win).toISOString();
 
-        const { data: existingInc } = await supabase
+        let duplicateQuery = supabase
           .from('transactions')
-          .select('id, amount, transaction_date')
+          .select('id')
           .eq('kind', 'incoming')
           .eq('user_id', userId)
           .eq('amount', Number(directAmount))
+          .eq('source_or_merchant', String(directMerchant))
           .gte('transaction_date', minDate)
-          .lte('transaction_date', maxDate)
-          .limit(1);
+          .lte('transaction_date', maxDate);
+        if (idempotencyKey) duplicateQuery = duplicateQuery.ilike('note', `idempotency:${idempotencyKey}%`);
+        const { data: existingInc } = await duplicateQuery.limit(1);
 
         if (existingInc && existingInc.length > 0) {
           console.log(`[Webhook] Duplicate incoming ignored: ${directAmount} EGP on ${txDate}`);
@@ -169,7 +173,7 @@ export async function POST(req) {
             kind: 'incoming',
             amount: directAmount,
             source_or_merchant: directMerchant,
-            note: directNote,
+            note: idempotencyKey ? `idempotency:${idempotencyKey} | ${directNote}` : directNote,
             transaction_date: txDate
           }]);
         if (error) throw error;
@@ -486,9 +490,10 @@ async function handleCreditCardSms(message, time, userId, customCategory) {
 }
 
 async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, categoryId = null) {
-  // Robust 24-hour deduplication window by amount, kind, and user
+  // Use a short amount/source/time fingerprint as a fallback. A 24-hour
+  // amount-only window incorrectly drops legitimate repeated purchases.
   const txTimeMs = new Date(time).getTime();
-  const win = 24 * 3600 * 1000;
+  const win = 5 * 60 * 1000;
   const minDate = new Date(txTimeMs - win).toISOString();
   const maxDate = new Date(txTimeMs + win).toISOString();
 
@@ -497,6 +502,7 @@ async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, cate
     .select('id, amount, transaction_date')
     .eq('kind', 'outgoing')
     .eq('amount', Number(amount))
+    .eq('source_or_merchant', sourceOrMerchant)
     .gte('transaction_date', minDate)
     .lte('transaction_date', maxDate);
 
@@ -581,4 +587,3 @@ async function handleReversal(message, time, userId) {
 
   return new NextResponse('Success: Reversal logged', { status: 200 });
 }
-

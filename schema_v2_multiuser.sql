@@ -62,6 +62,21 @@ BEGIN
   END IF;
 END $$;
 
+-- Once legacy rows have been backfilled, ownership must be mandatory. This
+-- fails loudly instead of silently installing a partially isolated schema.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM categories WHERE user_id IS NULL)
+     OR EXISTS (SELECT 1 FROM transactions WHERE user_id IS NULL)
+     OR EXISTS (SELECT 1 FROM push_subscriptions WHERE user_id IS NULL) THEN
+    RAISE EXCEPTION 'Cannot enforce tenant ownership: legacy rows still have NULL user_id';
+  END IF;
+END $$;
+
+ALTER TABLE categories ALTER COLUMN user_id SET NOT NULL;
+ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;
+ALTER TABLE push_subscriptions ALTER COLUMN user_id SET NOT NULL;
+
 -- 6. Trigger for Automatic Onboarding of NEW Users (General Category List)
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS TRIGGER AS $$
@@ -119,15 +134,15 @@ ALTER TABLE user_webhook_tokens ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "User categories policy" ON categories;
 CREATE POLICY "User categories policy" ON categories
-  FOR ALL USING (auth.uid() = user_id OR user_id IS NULL);
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "User transactions policy" ON transactions;
 CREATE POLICY "User transactions policy" ON transactions
-  FOR ALL USING (auth.uid() = user_id OR user_id IS NULL);
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "User push policy" ON push_subscriptions;
 CREATE POLICY "User push policy" ON push_subscriptions
-  FOR ALL USING (auth.uid() = user_id OR user_id IS NULL);
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "User sms rules policy" ON user_sms_rules;
 CREATE POLICY "User sms rules policy" ON user_sms_rules

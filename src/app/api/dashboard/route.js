@@ -107,7 +107,7 @@ export async function GET(req) {
       .order('sort_order', { ascending: true });
 
     if (isOwner) {
-      catQuery = catQuery.or(`user_id.eq.${user.id},user_id.in.(${ownerAliases.join(',')}),user_id.is.null`);
+      catQuery = catQuery.or(`user_id.eq.${user.id},user_id.in.(${ownerAliases.join(',')})`);
     } else {
       catQuery = catQuery.eq('user_id', user.id);
     }
@@ -147,7 +147,7 @@ export async function GET(req) {
       .order('transaction_date', { ascending: false });
 
     if (isOwner) {
-      txQuery = txQuery.or(`user_id.eq.${user.id},user_id.in.(${ownerAliases.join(',')}),user_id.is.null`);
+      txQuery = txQuery.or(`user_id.eq.${user.id},user_id.in.(${ownerAliases.join(',')})`);
     } else {
       txQuery = txQuery.eq('user_id', user.id);
     }

@@ -73,7 +73,7 @@ export async function DELETE(req) {
         .from('push_subscriptions')
         .delete()
         .eq('endpoint', endpoint)
-        .or(`user_id.eq.${user.id},user_id.is.null`);
+        .eq('user_id', user.id);
     }
     return NextResponse.json({ success: true });
   } catch (err) {
