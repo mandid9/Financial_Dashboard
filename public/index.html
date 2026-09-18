@@ -1477,8 +1477,36 @@ const state = {
   isLoading: false,
   smsRules: [],
   smsRulesLoaded: false,
-  smsRuleEditingId: null
+  smsRuleEditingId: null,
+  cycleCache: {}
 };
+
+function getLocalCycleInfo(offset) {
+  const now = new Date();
+  const cycleStartDay = 20;
+  let baseMonth = now.getMonth();
+  let baseYear = now.getFullYear();
+  if (now.getDate() < cycleStartDay) {
+    baseMonth -= 1;
+    if (baseMonth < 0) { baseMonth = 11; baseYear -= 1; }
+  }
+  let m = baseMonth + offset;
+  let y = baseYear;
+  while (m < 0) { m += 12; y -= 1; }
+  while (m > 11) { m -= 12; y += 1; }
+  let nextM = m + 1;
+  let nextY = y;
+  if (nextM > 11) { nextM = 0; nextY += 1; }
+  const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const shortYear = String(nextY).slice(-2);
+  const label = `${monthNames[m]} / ${monthNames[nextM]} '${shortYear}`;
+  return {
+    label,
+    isCurrent: offset === 0,
+    isNext: offset > 0,
+    isPast: offset < 0
+  };
+}
 
 function dashboardCacheKey() {
   return state.user?.id ? `cached_dashboard_data:${state.user.id}` : null;
@@ -1843,6 +1871,15 @@ async function loadData(silent = false) {
         }));
       } catch (e) {}
     }
+
+    // In-memory cache for rapid, instant cycle navigation
+    if ((!state.historyFilter || state.historyFilter === 'month') && !state.historySearch) {
+      state.cycleCache[state.cycleOffset] = {
+        cycle: data.cycle,
+        dashboard: data.dashboard,
+        budget: data.budget
+      };
+    }
     
     state.lastUpdated = new Date();
     const lu = document.getElementById('last-updated');
@@ -1877,23 +1914,63 @@ function resetHistoryPagination() {
   state.historyAppend = false;
 }
 
-function prevCycle() {
-  state.cycleOffset -= 1;
+let cycleNavDebounceTimer = null;
+
+function navigateCycle(newOffset) {
+  state.cycleOffset = newOffset;
   resetHistoryPagination();
-  loadData();
+
+  // 1. Instant optimistic update of cycle label, badge & banner (0ms)
+  const optimistic = getLocalCycleInfo(state.cycleOffset);
+  const labelEl = document.getElementById('cycle-label');
+  const badgeEl = document.getElementById('cycle-badge');
+  const bannerEl = document.getElementById('cycle-state-banner');
+  if (labelEl) labelEl.textContent = optimistic.label;
+  if (badgeEl) {
+    badgeEl.textContent = optimistic.isCurrent ? 'Current' : (optimistic.isNext ? 'Next Preview' : 'Past Archive');
+    badgeEl.className = 'cycle-badge ' + (optimistic.isCurrent ? 'current' : (optimistic.isNext ? 'next' : 'past'));
+  }
+  if (bannerEl) {
+    if (optimistic.isNext) {
+      bannerEl.style.display = 'flex';
+      bannerEl.className = 'cycle-banner';
+      bannerEl.innerHTML = `<span>🔮 <strong>Next Cycle Preview</strong> • Showing carried items & calculated debt rollover</span><button class="alt" style="padding:4px 8px; font-size:11px" onclick="resetCycle()">Go Current</button>`;
+    } else if (optimistic.isPast) {
+      bannerEl.style.display = 'flex';
+      bannerEl.className = 'cycle-banner archive';
+      bannerEl.innerHTML = `<span>📁 <strong>Historical Archive</strong> • Past recorded cycle data (Read-Only)</span><button class="alt" style="padding:4px 8px; font-size:11px" onclick="resetCycle()">Go Current</button>`;
+    } else {
+      bannerEl.style.display = 'none';
+    }
+  }
+
+  // 2. Instant cache-first paint if we previously visited this cycle (0ms)
+  const cached = state.cycleCache[state.cycleOffset];
+  if (cached && (!state.historyFilter || state.historyFilter === 'month') && !state.historySearch) {
+    state.cycle = cached.cycle;
+    state.dashboard = cached.dashboard;
+    state.budget = cached.budget;
+    renderAll();
+  }
+
+  // 3. Short 150ms debounce so rapid clicking feels like a native responsive carousel
+  if (cycleNavDebounceTimer) clearTimeout(cycleNavDebounceTimer);
+  cycleNavDebounceTimer = setTimeout(() => {
+    loadData(!!cached);
+  }, 150);
+}
+
+function prevCycle() {
+  navigateCycle(state.cycleOffset - 1);
 }
 
 function nextCycle() {
-  state.cycleOffset += 1;
-  resetHistoryPagination();
-  loadData();
+  navigateCycle(state.cycleOffset + 1);
 }
 
 function resetCycle() {
   if (state.cycleOffset !== 0) {
-    state.cycleOffset = 0;
-    resetHistoryPagination();
-    loadData();
+    navigateCycle(0);
   }
 }
 
