@@ -201,3 +201,15 @@ Verification:
 ## Plan created
 
 Remaining work is prioritized in [REMAINING_FIX_PLAN.md](REMAINING_FIX_PLAN.md), covering atomic splits, RLS confirmation, SQL aggregation, refresh cancellation, production push configuration, frontend modularization, tests, error handling, and documentation cleanup.
+
+## Step 15 — Generic Category Removal & Auto-Seed Prevention (2026-09-18)
+
+Removed the 9 generic auto-seeded categories from the owner's account in Supabase and permanently prevented auto-seeding for the owner account:
+
+1. **Root Cause:** When the dashboard route was strictly scoped to `user.id` without owner alias fallback, a lookup returning 0 categories triggered `if (!categories || categories.length === 0)`, inserting 9 generic starter categories (`Food & Dining`, `Groceries & Supermarket`, `Transportation & Fuel`, `Bills & Utilities`, `Housing & Rent`, `Shopping & Personal`, `Health & Medical`, `Debt & Credit Card`, `Savings & Investments`) into the primary account.
+2. **Identification & Safety Audit:** Inspected all 31 categories in Supabase. The 9 generic categories were all created at `2026-08-29T08:15:49`. One transaction linked to `Food & Dining` (`Card رقم`, 200.5 EGP) was safely unlinked (`category_id: null` / Uncategorized) without losing transaction history.
+3. **Deletion:** Deleted all 9 generic categories from `public.categories`. Exactly 22 authentic custom user categories remain.
+4. **Prevention:** Updated `src/app/api/dashboard/route.js` so that:
+   - Auto-seeding is explicitly bypassed for the owner: `if (!isOwner && (!categories || categories.length === 0))`.
+   - The owner's categories and transactions query includes `ownerAliases` and unassigned records to guarantee full category retrieval.
+5. **Cleaned up:** Removed temporary inspection and cleanup routes. Production build and deployment verified.
