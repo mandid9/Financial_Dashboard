@@ -30,6 +30,11 @@ export async function GET(req) {
       .select('id, user_id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id')
       .order('transaction_date', { ascending: true });
 
+    // 2.5 SMS Rules
+    const { data: smsRules } = await supabase
+      .from('user_sms_rules')
+      .select('*');
+
     // Active cycle bounds (Aug 20 - Sep 20 Egypt UTC+3)
     const cycleStart = new Date(Date.UTC(2026, 7, 20, 0, 0, 0) - (3 * 3600 * 1000));
     const cycleEnd = new Date(Date.UTC(2026, 8, 20, 0, 0, 0) - (3 * 3600 * 1000));
@@ -76,6 +81,7 @@ export async function GET(req) {
       success: true,
       totalTxs: allTxs?.length || 0,
       totalCategories: categories?.length || 0,
+      smsRules: smsRules || [],
       txsByUser,
       inCycleSpendTotal,
       nullCatInCycle,
