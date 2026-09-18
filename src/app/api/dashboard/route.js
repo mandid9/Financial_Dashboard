@@ -32,6 +32,18 @@ export async function GET(req) {
     }
 
     const isOwner = user.email === 'kr.wn20@gmail.com';
+    const ownerAliases = [user.id, '5aa42527-12fc-448a-a108-70531f3c5607', '2463bf7f-f454-454f-b8bc-b8328f85069b', '7d88ef85-b3e7-4eb5-a00d-1c61a6bb0d28'];
+
+    // If primary owner, ensure legacy unassigned records and owner aliases are locked to owner's active user_id
+    if (isOwner) {
+      Promise.all([
+        supabase.from('categories').update({ user_id: user.id }).in('user_id', ownerAliases),
+        supabase.from('transactions').update({ user_id: user.id }).in('user_id', ownerAliases),
+        supabase.from('categories').update({ user_id: user.id }).is('user_id', null),
+        supabase.from('transactions').update({ user_id: user.id }).is('user_id', null),
+        supabase.from('push_subscriptions').update({ user_id: user.id }).is('user_id', null)
+      ]).catch(e => console.warn('Auto-backfill notice:', e.message));
+    }
 
     // Ensure user has a persistent webhook token
     let userWebhookToken = null;
@@ -89,13 +101,17 @@ export async function GET(req) {
     const isNext = cycleOffset > 0;
     const isPast = cycleOffset < 0;
 
-    // 2. Fetch Categories (Strictly scoped to user_id)
+    // 2. Fetch Categories (Scoped to user_id, with owner aliases for primary owner)
     let catQuery = supabase
       .from('categories')
       .select('id, name, planned_amount, sort_order')
       .order('sort_order', { ascending: true });
 
-    catQuery = catQuery.eq('user_id', user.id);
+    if (isOwner) {
+      catQuery = catQuery.or(`user_id.eq.${user.id},user_id.in.(${ownerAliases.join(',')}),user_id.is.null`);
+    } else {
+      catQuery = catQuery.eq('user_id', user.id);
+    }
 
     let { data: categories, error: catError } = await catQuery;
     if (catError) throw catError;
@@ -103,8 +119,8 @@ export async function GET(req) {
     let { data: smsRules, error: smsRulesError } = await supabase.from('user_sms_rules').select('*').eq('user_id', user.id).order('priority', { ascending: true }).order('created_at', { ascending: true });
     if (smsRulesError) { console.warn('SMS rules retrieval warning:', smsRulesError.message); smsRules = []; }
 
-    // Auto-provision initial categories for new accounts
-    if (!categories || categories.length === 0) {
+    // Auto-provision initial categories for new non-owner accounts only
+    if (!isOwner && (!categories || categories.length === 0)) {
       const defaultCategories = [
         { user_id: user.id, name: 'Food & Dining', planned_amount: 0, sort_order: 1 },
         { user_id: user.id, name: 'Groceries & Supermarket', planned_amount: 0, sort_order: 2 },
@@ -125,13 +141,17 @@ export async function GET(req) {
       }
     }
 
-    // 3. Fetch Transactions (Strictly scoped to user_id)
+    // 3. Fetch Transactions (Scoped to user_id, with owner aliases for primary owner)
     let txQuery = supabase
       .from('transactions')
       .select('id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id, categories(name)')
       .order('transaction_date', { ascending: false });
 
-    txQuery = txQuery.eq('user_id', user.id);
+    if (isOwner) {
+      txQuery = txQuery.or(`user_id.eq.${user.id},user_id.in.(${ownerAliases.join(',')}),user_id.is.null`);
+    } else {
+      txQuery = txQuery.eq('user_id', user.id);
+    }
     // Current/filtered views and the four historical summaries only need the
     // target cycle plus five preceding cycles. Keep all-time history explicit
     // so the common dashboard request does not load the entire table.
