@@ -1722,6 +1722,7 @@ async function logout() {
     if (window.AndroidApp && typeof window.AndroidApp.clearUserSession === 'function') {
       window.AndroidApp.clearUserSession();
     }
+  } catch (e) {}
   if (dashboardAbortController) {
     dashboardAbortController.abort();
     dashboardAbortController = null;
@@ -4134,6 +4135,19 @@ function triggerNativeTestFromHub() {
     sendTestPush();
   }
 }
+
+// Biometric authentication success handler from Android Native bridge
+window.onBiometricSuccess = async function() {
+  if (!state.user) {
+    if (await checkAuth()) {
+      await loadData();
+      initPushNotifications();
+      initBiometricUI();
+    }
+  } else if (!state.isLoading) {
+    loadData(true);
+  }
+};
 
 // Auto-refresh when returning to app / focusing window
 window.onAppResume = function() {
