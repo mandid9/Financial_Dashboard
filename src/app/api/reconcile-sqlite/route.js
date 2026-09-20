@@ -43,7 +43,7 @@ async function handleReconcile(req, isPost) {
     // 2. Read all database transactions from Supabase
     const { data: dbTxs, error: dbErr } = await supabase
       .from('transactions')
-      .select('id, user_id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id, categories(name)')
+      .select('id, user_id, kind, amount, source_or_merchant, note, transaction_date, created_at, is_carried_forward, category_id, categories(name)')
       .order('transaction_date', { ascending: false });
 
     if (dbErr) throw dbErr;
@@ -94,6 +94,8 @@ async function handleReconcile(req, isPost) {
             source: bestMatch.dbTx.source_or_merchant,
             kind: bestMatch.dbTx.kind,
             date: bestMatch.dbTx.transaction_date,
+            created_at: bestMatch.dbTx.created_at,
+            note: bestMatch.dbTx.note,
             category: bestMatch.dbTx.categories?.name || 'Uncategorized',
             timeDiffHours: bestMatch.timeDiffHours
           }
@@ -120,6 +122,8 @@ async function handleReconcile(req, isPost) {
         source: d.source_or_merchant,
         kind: d.kind,
         date: d.transaction_date,
+        created_at: d.created_at,
+        note: d.note,
         category: d.categories?.name || 'Uncategorized'
       }));
 
