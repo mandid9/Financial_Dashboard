@@ -4,6 +4,17 @@ import { supabase } from '@/lib/supabase';
 import { sendPushToAll, evaluateAndDispatchTriggers } from '@/lib/push';
 import { getAuthenticatedUser } from '@/lib/auth';
 
+// In-memory concurrency locks and dedup cache to eliminate sub-second race conditions
+const inFlightLocks = new Set();
+const recentDedupCache = new Map();
+
+function pruneDedupCache() {
+  const cutoff = Date.now() - 60000;
+  for (const [k, ts] of recentDedupCache.entries()) {
+    if (ts < cutoff) recentDedupCache.delete(k);
+  }
+}
+
 function getProvidedSecret(req) {
   const authorization = req.headers.get('authorization') || '';
   if (authorization.startsWith('Bearer ')) {
@@ -132,62 +143,122 @@ export async function POST(req) {
       }
     } catch (e) {}
 
-    // Reject Promotional, Carrier Airtime/Call Tone, Balance Inquiry, and OTP SMS
-    const isPromo = /عرض خاص|اشحن|احصل على|خصم يصل|لفترة محدودة|كود الخصم|مبروك|وفر مع|استمتع بـ|استمتع بخصم|اشترك الآن|اشترك الان|شحنتك|كول تون|رنة المتصل|رنتلي|تجديد رنة|رصيدك الحالي|رصيدك المتاح|متبقي من باقتك|رصيد محفظتك|كود التأكيد|رمز التحقق|رمز الأمان|لا تشارك|استبدل نقاطك|صندوق الهدايا|كاش باك|على النوتة|سلفة|فليكسات|فليكس 80|فليكس 70|فليكس 100|فليكس 200|promo|offer|discount up to|special offer|recharge now|win up to|subscribe now|voucher code|coupon|get free|valid until|call tone|current.*balance|balance is|available balance|otp[:\s]|verification code|one-time password|reward points/i.test(body);
-    if (isPromo) {
-      return new NextResponse('Ignored: Promotional/Carrier message detected', { status: 200 });
+    // Fast in-memory deduplication check (catches sub-second duplicate webhook posts)
+    const dedupFingerprint = idempotencyKey 
+      ? `idemp_${userId}_${idempotencyKey}`
+      : `fp_${userId}_${directAmount || 'raw'}_${directKind || 'any'}_${Math.round(new Date(txDate).getTime() / 15000)}`;
+
+    pruneDedupCache();
+    if (recentDedupCache.has(dedupFingerprint)) {
+      console.log(`[Webhook] Duplicate ignored by memory cache: ${dedupFingerprint}`);
+      return new NextResponse('Duplicate ignored (cache)', { status: 200 });
     }
+    if (inFlightLocks.has(dedupFingerprint)) {
+      console.log(`[Webhook] Duplicate ignored by in-flight lock: ${dedupFingerprint}`);
+      return new NextResponse('Duplicate in-flight ignored', { status: 200 });
+    }
+    inFlightLocks.add(dedupFingerprint);
 
-    // 0. If already parsed by Android Companion App, insert directly with deduplication!
-    if (directAmount && directAmount > 0) {
-      if (directKind === 'incoming') {
-        // Prefer the caller-provided idempotency key. Fall back to a narrow
-        // amount/source/time fingerprint so two legitimate daily payments are
-        // not silently treated as duplicates.
-        const txTimeMs = new Date(txDate).getTime();
-        const win = 5 * 60 * 1000;
-        const minDate = new Date(txTimeMs - win).toISOString();
-        const maxDate = new Date(txTimeMs + win).toISOString();
-
-        let duplicateQuery = supabase
-          .from('transactions')
-          .select('id')
-          .eq('kind', 'incoming')
-          .eq('user_id', userId)
-          .eq('amount', Number(directAmount))
-          .eq('source_or_merchant', String(directMerchant))
-          .gte('transaction_date', minDate)
-          .lte('transaction_date', maxDate);
-        if (idempotencyKey) duplicateQuery = duplicateQuery.ilike('note', `idempotency:${idempotencyKey}%`);
-        const { data: existingInc } = await duplicateQuery.limit(1);
-
-        if (existingInc && existingInc.length > 0) {
-          console.log(`[Webhook] Duplicate incoming ignored: ${directAmount} EGP on ${txDate}`);
-          return new NextResponse('Duplicate incoming ignored', { status: 200 });
-        }
-
-        const { error } = await supabase
-          .from('transactions')
-          .insert([{
-            user_id: userId,
-            kind: 'incoming',
-            amount: directAmount,
-            source_or_merchant: directMerchant,
-            note: idempotencyKey ? `idempotency:${idempotencyKey} | ${directNote}` : directNote,
-            transaction_date: txDate
-          }]);
-        if (error) throw error;
-        await sendPushToAll({
-          title: `💰 EGP ${Number(directAmount).toLocaleString()} Income Logged`,
-          body: `${directMerchant}`,
-          icon: '/icon.svg',
-          url: '/index.html'
-        }, userId).catch(() => {});
-        return new NextResponse('Success: Direct income logged', { status: 200 });
-      } else {
-        return await insertOutgoing(directAmount, directMerchant, directNote, txDate, userId, customCategory);
+    try {
+      // Reject Promotional, Carrier Airtime/Call Tone, Balance Inquiry, and OTP SMS
+      const isPromo = /عرض خاص|اشحن|احصل على|خصم يصل|لفترة محدودة|كود الخصم|مبروك|وفر مع|استمتع بـ|استمتع بخصم|اشترك الآن|اشترك الان|شحنتك|كول تون|رنة المتصل|رنتلي|تجديد رنة|رصيدك الحالي|رصيدك المتاح|متبقي من باقتك|رصيد محفظتك|كود التأكيد|رمز التحقق|رمز الأمان|لا تشارك|استبدل نقاطك|صندوق الهدايا|كاش باك|على النوتة|سلفة|فليكسات|فليكس 80|فليكس 70|فليكس 100|فليكس 200|promo|offer|discount up to|special offer|recharge now|win up to|subscribe now|voucher code|coupon|get free|valid until|call tone|current.*balance|balance is|available balance|otp[:\s]|verification code|one-time password|reward points/i.test(body);
+      if (isPromo) {
+        return new NextResponse('Ignored: Promotional/Carrier message detected', { status: 200 });
       }
-    }
+
+      // 0. If already parsed by Android Companion App, insert directly with deduplication!
+      if (directAmount && directAmount > 0) {
+        if (directKind === 'incoming') {
+          // 1. Idempotency key check
+          if (idempotencyKey) {
+            const { data: idempExists } = await supabase
+              .from('transactions')
+              .select('id')
+              .eq('user_id', userId)
+              .ilike('note', `%idempotency:${idempotencyKey}%`)
+              .limit(1);
+            if (idempExists && idempExists.length > 0) {
+              console.log(`[Webhook] Duplicate incoming ignored by idempotency_key: ${idempotencyKey}`);
+              recentDedupCache.set(dedupFingerprint, Date.now());
+              return new NextResponse('Duplicate incoming ignored (idempotency)', { status: 200 });
+            }
+          }
+
+          // 2. Short window check
+          const txTimeMs = new Date(txDate).getTime();
+          const win = 5 * 60 * 1000;
+          const minDate = new Date(txTimeMs - win).toISOString();
+          const maxDate = new Date(txTimeMs + win).toISOString();
+
+          let duplicateQuery = supabase
+            .from('transactions')
+            .select('id')
+            .eq('kind', 'incoming')
+            .eq('user_id', userId)
+            .eq('amount', Number(directAmount))
+            .eq('source_or_merchant', String(directMerchant))
+            .gte('transaction_date', minDate)
+            .lte('transaction_date', maxDate);
+
+          const { data: existingInc } = await duplicateQuery.limit(1);
+
+          if (existingInc && existingInc.length > 0) {
+            console.log(`[Webhook] Duplicate incoming ignored: ${directAmount} EGP on ${txDate}`);
+            recentDedupCache.set(dedupFingerprint, Date.now());
+            return new NextResponse('Duplicate incoming ignored', { status: 200 });
+          }
+
+          const fullNote = idempotencyKey 
+            ? (directNote ? `idempotency:${idempotencyKey} | ${directNote}` : `idempotency:${idempotencyKey}`)
+            : directNote;
+
+          const { error } = await supabase
+            .from('transactions')
+            .insert([{
+              user_id: userId,
+              kind: 'incoming',
+              amount: directAmount,
+              source_or_merchant: directMerchant,
+              note: fullNote,
+              transaction_date: txDate
+            }]);
+          if (error) throw error;
+
+          // 3. Post-insert self-healing collision check
+          try {
+            const { data: collisions } = await supabase
+              .from('transactions')
+              .select('id, created_at')
+              .eq('user_id', userId)
+              .eq('kind', 'incoming')
+              .eq('amount', Number(directAmount))
+              .eq('source_or_merchant', String(directMerchant))
+              .eq('transaction_date', txDate)
+              .order('created_at', { ascending: true });
+
+            if (collisions && collisions.length > 1) {
+              const duplicateIds = collisions.slice(1).map(c => c.id);
+              await supabase.from('transactions').delete().in('id', duplicateIds).eq('user_id', userId);
+              console.warn(`[Webhook] Auto-healed incoming collision: removed duplicate IDs ${duplicateIds.join(', ')}`);
+            }
+          } catch (cleanErr) {
+            console.warn('[Webhook] Incoming collision check warning:', cleanErr.message);
+          }
+
+          recentDedupCache.set(dedupFingerprint, Date.now());
+          await sendPushToAll({
+            title: `💰 EGP ${Number(directAmount).toLocaleString()} Income Logged`,
+            body: `${directMerchant}`,
+            icon: '/icon.svg',
+            url: '/index.html'
+          }, userId).catch(() => {});
+          return new NextResponse('Success: Direct income logged', { status: 200 });
+        } else {
+          const res = await insertOutgoing(directAmount, directMerchant, directNote, txDate, userId, customCategory, idempotencyKey);
+          recentDedupCache.set(dedupFingerprint, Date.now());
+          return res;
+        }
+      }
 
     // Normalize Eastern Arabic numerals: ٠-٩ -> 0-9
     body = body
@@ -265,102 +336,119 @@ export async function POST(req) {
       return await handleSalarySms(body, txDate, userId);
     }
 
-    // 2. Instapay Transfer Sent (Outgoing Expense)
-    if (/IPN transfer sent|تحويل عبر انستاباي/i.test(body)) {
-      const amtMatch = body.match(/(?:amount of\s*)?(?:EGP|LE|ج\.م|جنيه)?\s*([\d,.]+)\s*(?:EGP|LE|ج\.م|جنيه)?/i);
-      const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
-      const fromMatch = body.match(/(?:from|to|إلى)\s+([^\s,]+)/i);
-      const source = `Instapay Sent${fromMatch ? ` (${fromMatch[1]})` : ''}`;
-      if (isPendingQueue) return await queuePending(body, amount, source, 'outgoing', userId, idempotencyKey);
-      return await handleInstapaySent(body, txDate, userId, customCategory);
-    }
-
-    // 3. Instapay Transfer Received (Incoming Income)
-    if (/IPN transfer re(ceived|cieved)|استلام تحويل.*انستاباي/i.test(body)) {
-      const amtMatch = body.match(/(?:amount of\s*)?(?:EGP|LE|ج\.م|جنيه)?\s*([\d,.]+)\s*(?:EGP|LE|ج\.م|جنيه)?/i);
-      const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
-      const fromMatch = body.match(/(?:from|من)\s+([^\s,]+)/i);
-      const source = `Instapay Received${fromMatch ? ` from ${fromMatch[1]}` : ''}`;
-      if (isPendingQueue) return await queuePending(body, amount, source, 'incoming', userId, idempotencyKey);
-      return await handleInstapayReceived(body, txDate, userId);
-    }
-
-    // 4. Card Purchases (NBE, CIB, Banque Misr, QNB, etc.)
-    if (/Your (?:Debit|Credit) Card|تم (?:تنفيذ |إجراء )?حركة|مشتريات|حركة شراء|حركة خصم|تمت معاملة|Purchase (?:of|transaction)|Card (?:ending|used)/i.test(body)) {
-      const amtMatch = body.match(/(?:EGP|LE|L\.E|ج\.م|جنيه|مبلغ|بمبلغ)\s*([\d,.]+)/i) ||
-                       body.match(/([\d,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جنيه)/i) ||
-                       body.match(/transaction of\s*(?:EGP|LE)?\s*([\d,.]+)/i);
-      const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
-
-      let merchant = 'Bank Card';
-      const merchMatch = body.match(/@([^,.\n]+)/) || body.match(/(?:at|لدى|عند)\s+([^,.\n]+)/i);
-      if (merchMatch) merchant = merchMatch[1].trim();
-
-      if (amount > 0) {
-        if (isPendingQueue) return await queuePending(body, amount, merchant, 'outgoing', userId, idempotencyKey);
-        return await insertOutgoing(amount, merchant, 'Card Purchase', txDate, userId, customCategory);
+      // 2. Instapay Transfer Sent (Outgoing Expense)
+      if (/IPN transfer sent|تحويل عبر انستاباي/i.test(body)) {
+        const amtMatch = body.match(/(?:amount of\s*)?(?:EGP|LE|ج\.م|جنيه)?\s*([\d,.]+)\s*(?:EGP|LE|ج\.م|جنيه)?/i);
+        const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
+        const fromMatch = body.match(/(?:from|to|إلى)\s+([^\s,]+)/i);
+        const source = `Instapay Sent${fromMatch ? ` (${fromMatch[1]})` : ''}`;
+        if (isPendingQueue) return await queuePending(body, amount, source, 'outgoing', userId, idempotencyKey);
+        const res = await handleInstapaySent(body, txDate, userId, customCategory, idempotencyKey);
+        recentDedupCache.set(dedupFingerprint, Date.now());
+        return res;
       }
-    }
 
-    // 5. Mobile Wallets (Vodafone Cash, Etisalat, Orange, WE Pay)
-    if (/Vodafone Cash|فودافون كاش|اورنچ كاش|اتصالات كاش|وي باي|تم (?:تحويل|دفع|استلام|خصم) مبلغ/i.test(body)) {
-      const amtMatch = body.match(/(?:مبلغ|بمبلغ|EGP|LE|ج\.م)\s*([\d,.]+)/i) || body.match(/([\d,.]+)\s*(?:ج\.م|EGP|LE)/i);
-      const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
-      const isIncoming = /استلام|إيداع|received|deposit/i.test(body);
-      const merchant = isIncoming ? 'Wallet Received' : 'Wallet Payment';
-      if (amount > 0) {
-        if (isIncoming) {
-          const { error } = await supabase.from('transactions').insert([{
-            user_id: userId,
-            kind: 'incoming',
-            amount: amount,
-            source_or_merchant: merchant,
-            note: 'Mobile Wallet',
-            transaction_date: txDate
-          }]);
-          if (error) throw error;
-          return new NextResponse('Success: Wallet incoming logged', { status: 200 });
-        }
-        return await insertOutgoing(amount, merchant, 'Mobile Wallet', txDate, userId, customCategory);
+      // 3. Instapay Transfer Received (Incoming Income)
+      if (/IPN transfer re(ceived|cieved)|استلام تحويل.*انستاباي/i.test(body)) {
+        const amtMatch = body.match(/(?:amount of\s*)?(?:EGP|LE|ج\.م|جنيه)?\s*([\d,.]+)\s*(?:EGP|LE|ج\.م|جنيه)?/i);
+        const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
+        const fromMatch = body.match(/(?:from|من)\s+([^\s,]+)/i);
+        const source = `Instapay Received${fromMatch ? ` from ${fromMatch[1]}` : ''}`;
+        if (isPendingQueue) return await queuePending(body, amount, source, 'incoming', userId, idempotencyKey);
+        const res = await handleInstapayReceived(body, txDate, userId);
+        recentDedupCache.set(dedupFingerprint, Date.now());
+        return res;
       }
-    }
 
-    // 6. Reversals / Refunds
-    if (/Reversed|Refunded|استرجاع|رد مبلغ/i.test(body)) {
-      return await handleReversal(body, txDate, userId);
-    }
+      // 4. Card Purchases (NBE, CIB, Banque Misr, QNB, etc.)
+      if (/Your (?:Debit|Credit) Card|تم (?:تنفيذ |إجراء )?حركة|مشتريات|حركة شراء|حركة خصم|تمت معاملة|Purchase (?:of|transaction)|Card (?:ending|used)/i.test(body)) {
+        const amtMatch = body.match(/(?:EGP|LE|L\.E|ج\.م|جنيه|مبلغ|بمبلغ)\s*([\d,.]+)/i) ||
+                         body.match(/([\d,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جنيه)/i) ||
+                         body.match(/transaction of\s*(?:EGP|LE)?\s*([\d,.]+)/i);
+        const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
 
-    // 7. Universal Smart Fallback (Any message with an amount & financial keyword)
-    const genericMatch = body.match(/(?:EGP|LE|L\.E|ج\.م|جنيه|مبلغ|بمبلغ)\s*([\d,.]+)/i) ||
-                         body.match(/([\d,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جنيه)/i);
-    if (genericMatch) {
-      const amount = parseFloat(genericMatch[1].replace(/,/g, ''));
-      const isFinancial = /purchase|payment|spent|transfer|debit|credit|pos|atm|cash|withdraw|invoice|order|paid|bill|wallet|card|خصم|شراء|مشتريات|سحب|دفع|تحويل|بطاقة|كارت|فاتورة|محفظة|معاملة|حركة/i.test(body);
-
-      if (amount > 0 && isFinancial) {
-        const isIncoming = /received|deposit|salary|refund|reversed|cashback|ايداع|إيداع|استلام|اضافة|إضافة|راتب|مرتب|استرجاع|وارد/i.test(body);
-        let merchant = 'Bank Transaction';
-        const merchMatch = body.match(/@([^,.\n]+)/) || body.match(/(?:at|لدى|عند|إلى|to)\s+([^,.\n]+)/i);
+        let merchant = 'Bank Card';
+        const merchMatch = body.match(/@([^,.\n]+)/) || body.match(/(?:at|لدى|عند)\s+([^,.\n]+)/i);
         if (merchMatch) merchant = merchMatch[1].trim();
 
-        if (isIncoming) {
-          const { error } = await supabase.from('transactions').insert([{
-            user_id: userId,
-            kind: 'incoming',
-            amount: amount,
-            source_or_merchant: merchant,
-            note: 'Bank SMS',
-            transaction_date: txDate
-          }]);
-          if (error) throw error;
-          return new NextResponse('Success: Fallback incoming logged', { status: 200 });
+        if (amount > 0) {
+          if (isPendingQueue) return await queuePending(body, amount, merchant, 'outgoing', userId, idempotencyKey);
+          const res = await insertOutgoing(amount, merchant, 'Card Purchase', txDate, userId, customCategory, idempotencyKey);
+          recentDedupCache.set(dedupFingerprint, Date.now());
+          return res;
         }
-        return await insertOutgoing(amount, merchant, 'Bank SMS', txDate, userId, customCategory);
       }
-    }
 
-    // Strictly ignore all other non-financial messages
-    return new NextResponse('Ignored: No pattern matched', { status: 200 });
+      // 5. Mobile Wallets (Vodafone Cash, Etisalat, Orange, WE Pay)
+      if (/Vodafone Cash|فودافون كاش|اورنچ كاش|اتصالات كاش|وي باي|تم (?:تحويل|دفع|استلام|خصم) مبلغ/i.test(body)) {
+        const amtMatch = body.match(/(?:مبلغ|بمبلغ|EGP|LE|ج\.م)\s*([\d,.]+)/i) || body.match(/([\d,.]+)\s*(?:ج\.م|EGP|LE)/i);
+        const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
+        const isIncoming = /استلام|إيداع|received|deposit/i.test(body);
+        const merchant = isIncoming ? 'Wallet Received' : 'Wallet Payment';
+        if (amount > 0) {
+          if (isIncoming) {
+            const { error } = await supabase.from('transactions').insert([{
+              user_id: userId,
+              kind: 'incoming',
+              amount: amount,
+              source_or_merchant: merchant,
+              note: idempotencyKey ? `idempotency:${idempotencyKey} | Mobile Wallet` : 'Mobile Wallet',
+              transaction_date: txDate
+            }]);
+            if (error) throw error;
+            recentDedupCache.set(dedupFingerprint, Date.now());
+            return new NextResponse('Success: Wallet incoming logged', { status: 200 });
+          }
+          const res = await insertOutgoing(amount, merchant, 'Mobile Wallet', txDate, userId, customCategory, idempotencyKey);
+          recentDedupCache.set(dedupFingerprint, Date.now());
+          return res;
+        }
+      }
+
+      // 6. Reversals / Refunds
+      if (/Reversed|Refunded|استرجاع|رد مبلغ/i.test(body)) {
+        const res = await handleReversal(body, txDate, userId);
+        recentDedupCache.set(dedupFingerprint, Date.now());
+        return res;
+      }
+
+      // 7. Universal Smart Fallback (Any message with an amount & financial keyword)
+      const genericMatch = body.match(/(?:EGP|LE|L\.E|ج\.م|جنيه|مبلغ|بمبلغ)\s*([\d,.]+)/i) ||
+                           body.match(/([\d,.]+)\s*(?:EGP|LE|L\.E|ج\.م|جنيه)/i);
+      if (genericMatch) {
+        const amount = parseFloat(genericMatch[1].replace(/,/g, ''));
+        const isFinancial = /purchase|payment|spent|transfer|debit|credit|pos|atm|cash|withdraw|invoice|order|paid|bill|wallet|card|خصم|شراء|مشتريات|سحب|دفع|تحويل|بطاقة|كارت|فاتورة|محفظة|معاملة|حركة/i.test(body);
+
+        if (amount > 0 && isFinancial) {
+          const isIncoming = /received|deposit|salary|refund|reversed|cashback|ايداع|إيداع|استلام|اضافة|إضافة|راتب|مرتب|استرجاع|وارد/i.test(body);
+          let merchant = 'Bank Transaction';
+          const merchMatch = body.match(/@([^,.\n]+)/) || body.match(/(?:at|لدى|عند|إلى|to)\s+([^,.\n]+)/i);
+          if (merchMatch) merchant = merchMatch[1].trim();
+
+          if (isIncoming) {
+            const { error } = await supabase.from('transactions').insert([{
+              user_id: userId,
+              kind: 'incoming',
+              amount: amount,
+              source_or_merchant: merchant,
+              note: idempotencyKey ? `idempotency:${idempotencyKey} | Bank SMS` : 'Bank SMS',
+              transaction_date: txDate
+            }]);
+            if (error) throw error;
+            recentDedupCache.set(dedupFingerprint, Date.now());
+            return new NextResponse('Success: Fallback incoming logged', { status: 200 });
+          }
+          const res = await insertOutgoing(amount, merchant, 'Bank SMS', txDate, userId, customCategory, idempotencyKey);
+          recentDedupCache.set(dedupFingerprint, Date.now());
+          return res;
+        }
+      }
+
+      // Strictly ignore all other non-financial messages
+      return new NextResponse('Ignored: No pattern matched', { status: 200 });
+    } finally {
+      inFlightLocks.delete(dedupFingerprint);
+    }
   } catch (err) {
     console.error('Webhook Error:', err);
     return new NextResponse('Error: ' + err.message, { status: 500 });
@@ -417,7 +505,7 @@ async function handleSalarySms(message, time, userId) {
   return new NextResponse('Success: Salary logged', { status: 200 });
 }
 
-async function handleInstapaySent(message, time, userId, customCategory) {
+async function handleInstapaySent(message, time, userId, customCategory, idempotencyKey = null) {
   const amtMatch = message.match(/amount of EGP\s*([\d,.]+)/i) || message.match(/EGP\s*([\d,.]+)/i);
   if (!amtMatch) return new NextResponse('Could not parse Instapay sent amount', { status: 400 });
   const amount = parseFloat(amtMatch[1].replace(/,/g, ''));
@@ -426,7 +514,7 @@ async function handleInstapaySent(message, time, userId, customCategory) {
   const fromAcc = fromMatch ? ` (${fromMatch[1]})` : '';
   const source = `Instapay Sent${fromAcc}`;
 
-  return await insertOutgoing(amount, source, null, time, userId, customCategory);
+  return await insertOutgoing(amount, source, null, time, userId, customCategory, idempotencyKey);
 }
 
 async function handleInstapayReceived(message, time, userId) {
@@ -461,9 +549,23 @@ async function handleInstapayReceived(message, time, userId) {
   return new NextResponse('Success: Instapay income logged', { status: 200 });
 }
 
-async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, categoryId = null) {
-  // Use a short amount/source/time fingerprint as a fallback. A 24-hour
-  // amount-only window incorrectly drops legitimate repeated purchases.
+async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, categoryId = null, idempotencyKey = null) {
+  // 1. Check idempotency key if provided
+  if (idempotencyKey && userId) {
+    const { data: idempDups } = await supabase
+      .from('transactions')
+      .select('id')
+      .eq('user_id', userId)
+      .ilike('note', `%idempotency:${idempotencyKey}%`)
+      .limit(1);
+
+    if (idempDups && idempDups.length > 0) {
+      console.log(`[Webhook] Duplicate outgoing ignored (idempotency: ${idempotencyKey})`);
+      return new NextResponse('Duplicate ignored (idempotency)', { status: 200 });
+    }
+  }
+
+  // 2. Short amount/source/time window fallback check
   const txTimeMs = new Date(time).getTime();
   const win = 5 * 60 * 1000;
   const minDate = new Date(txTimeMs - win).toISOString();
@@ -486,6 +588,10 @@ async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, cate
     return new NextResponse('Duplicate ignored', { status: 200 });
   }
 
+  const fullNote = idempotencyKey
+    ? (note ? `idempotency:${idempotencyKey} | ${note}` : `idempotency:${idempotencyKey}`)
+    : note;
+
   const { error } = await supabase
     .from('transactions')
     .insert([{
@@ -494,11 +600,36 @@ async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, cate
       amount: amount,
       category_id: categoryId,
       source_or_merchant: sourceOrMerchant,
-      note: note,
+      note: fullNote,
       transaction_date: time
     }]);
 
   if (error) throw error;
+
+  // 3. Post-insert self-healing collision check (mitigates concurrent serverless lambda instances)
+  try {
+    let collisionQuery = supabase
+      .from('transactions')
+      .select('id, created_at')
+      .eq('kind', 'outgoing')
+      .eq('amount', Number(amount))
+      .eq('source_or_merchant', sourceOrMerchant)
+      .eq('transaction_date', time)
+      .order('created_at', { ascending: true });
+
+    if (userId) collisionQuery = collisionQuery.eq('user_id', userId);
+    const { data: collisions } = await collisionQuery;
+
+    if (collisions && collisions.length > 1) {
+      const duplicateIds = collisions.slice(1).map(c => c.id);
+      let purgeQuery = supabase.from('transactions').delete().in('id', duplicateIds);
+      if (userId) purgeQuery = purgeQuery.eq('user_id', userId);
+      await purgeQuery;
+      console.warn(`[Webhook] Auto-healed outgoing collision: removed duplicate IDs ${duplicateIds.join(', ')}`);
+    }
+  } catch (cleanErr) {
+    console.warn('[Webhook] Outgoing collision check warning:', cleanErr.message);
+  }
 
   await sendPushToAll({
     title: `💸 EGP ${Number(amount).toLocaleString()} Spent`,

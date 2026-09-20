@@ -8,7 +8,7 @@ function usableEnvValue(value) {
 
 const VAPID_PUBLIC_KEY = usableEnvValue(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY);
 const VAPID_PRIVATE_KEY = usableEnvValue(process.env.VAPID_PRIVATE_KEY);
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:kr.wn20@gmail.com';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || (process.env.OWNER_EMAIL ? `mailto:${process.env.OWNER_EMAIL}` : 'mailto:contact@localdomain');
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   try {

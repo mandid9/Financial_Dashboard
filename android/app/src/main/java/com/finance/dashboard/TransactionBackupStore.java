@@ -220,11 +220,13 @@ public final class TransactionBackupStore {
             Cursor cursor = null;
             try {
                 Helper helper = getHelper(context);
-                SQLiteDatabase db = helper.getReadableDatabase();
+                SQLiteDatabase db = helper.getWritableDatabase();
                 ensureMigrated(context, db);
+                String twoMinutesAgo = String.valueOf(System.currentTimeMillis() - 120000L);
                 cursor = db.query(TABLE,
                         null,
-                        "status IN (?, ?)", new String[]{"pending", "failed"}, null, null,
+                        "status IN (?, ?) OR (status = 'syncing' AND created_at < ?)",
+                        new String[]{"pending", "failed", twoMinutesAgo}, null, null,
                         "created_at ASC");
                 if (cursor != null) {
                     while (cursor.moveToNext()) {
@@ -240,6 +242,14 @@ public final class TransactionBackupStore {
                         int noteIdx = cursor.getColumnIndex("note");
                         String note = noteIdx >= 0 ? cursor.getString(noteIdx) : "";
                         pendingList.add(new PendingTx(id, message, amount, merchant, kind, category, createdAt, sender, note));
+                    }
+                }
+                // Atomically claim these transactions as syncing so no concurrent sync thread touches them
+                if (!pendingList.isEmpty()) {
+                    ContentValues cv = new ContentValues();
+                    cv.put("status", "syncing");
+                    for (PendingTx p : pendingList) {
+                        db.update(TABLE, cv, "id = ?", new String[]{String.valueOf(p.id)});
                     }
                 }
             } catch (Exception error) {

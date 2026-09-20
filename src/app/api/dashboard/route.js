@@ -31,19 +31,8 @@ export async function GET(req) {
       }
     }
 
-    const isOwner = user.email === 'kr.wn20@gmail.com';
-    const ownerAliases = [user.id, '5aa42527-12fc-448a-a108-70531f3c5607', '2463bf7f-f454-454f-b8bc-b8328f85069b', '7d88ef85-b3e7-4eb5-a00d-1c61a6bb0d28'];
-
-    // If primary owner, ensure legacy unassigned records and owner aliases are locked to owner's active user_id
-    if (isOwner) {
-      Promise.all([
-        supabase.from('categories').update({ user_id: user.id }).in('user_id', ownerAliases),
-        supabase.from('transactions').update({ user_id: user.id }).in('user_id', ownerAliases),
-        supabase.from('categories').update({ user_id: user.id }).is('user_id', null),
-        supabase.from('transactions').update({ user_id: user.id }).is('user_id', null),
-        supabase.from('push_subscriptions').update({ user_id: user.id }).is('user_id', null)
-      ]).catch(e => console.warn('Auto-backfill notice:', e.message));
-    }
+    const ownerEmail = process.env.OWNER_EMAIL || process.env.PRIMARY_OWNER_EMAIL || '';
+    const isOwner = Boolean(ownerEmail && user.email && user.email.toLowerCase() === ownerEmail.toLowerCase());
 
     // Ensure user has a persistent webhook token
     let userWebhookToken = null;

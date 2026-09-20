@@ -25,6 +25,7 @@ public class SmsReceiver extends BroadcastReceiver {
 
     public static final String CHANNEL_ID = "financial_alerts";
     private static final String TAG = "FinanceSmsReceiver";
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> RECENT_SMS_BROADCASTS = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -63,7 +64,22 @@ public class SmsReceiver extends BroadcastReceiver {
         BankParser.ParsedTransaction tx = BankParser.parse(context, sender, messageBody);
 
         if (tx != null && tx.isMatched && tx.amount > 0) {
-            long txId = TransactionBackupStore.saveTransaction(context, messageBody, tx.amount, tx.merchant, tx.kind, tx.defaultCategory, "pending", smsTimestamp, sender, tx.note);
+            // Debounce identical broadcasts within a 30-second window (prevents multi-part / dual-sim double-dispatch)
+            long timeBucket = smsTimestamp / 30000;
+            String dedupKey = (sender != null ? sender : "") + "_" + tx.amount + "_" + tx.kind + "_" + timeBucket;
+            long now = System.currentTimeMillis();
+            Long lastSeen = RECENT_SMS_BROADCASTS.get(dedupKey);
+            if (lastSeen != null && (now - lastSeen) < 30000) {
+                Log.w(TAG, "Duplicate SMS broadcast ignored within 30s for key: " + dedupKey);
+                pendingResult.finish();
+                return;
+            }
+            RECENT_SMS_BROADCASTS.put(dedupKey, now);
+            if (RECENT_SMS_BROADCASTS.size() > 50) {
+                RECENT_SMS_BROADCASTS.entrySet().removeIf(entry -> (now - entry.getValue()) > 60000);
+            }
+
+            long txId = TransactionBackupStore.saveTransaction(context, messageBody, tx.amount, tx.merchant, tx.kind, tx.defaultCategory, "syncing", smsTimestamp, sender, tx.note);
             sendWebhookBackground(context, tx, sender, smsTimestamp, txId, pendingResult);
             showCleanNotification(context, tx);
         } else {
