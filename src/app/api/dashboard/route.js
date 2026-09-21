@@ -148,8 +148,61 @@ export async function GET(req) {
       txQuery = txQuery.gte('transaction_date', getCycleBounds(cycleOffset - 5).start.toISOString());
     }
 
-    const { data: allTransactions, error: txError } = await txQuery;
+    let { data: allTransactions, error: txError } = await txQuery;
     if (txError) throw txError;
+
+    // Auto-heal companion duplicate transactions within a 3-minute window (e.g. carrier receipt + bank card SMS)
+    if (allTransactions && allTransactions.length > 0) {
+      const genericMerchants = ['wallet payment', 'bank card', 'bank transaction', 'mobile wallet', 'bank notification', 'pos purchase', 'purchase'];
+      const duplicateIdsToDelete = [];
+      const keptTransactions = [];
+
+      for (const tx of allTransactions) {
+        if (tx.kind !== 'outgoing' || duplicateIdsToDelete.includes(tx.id)) {
+          if (!duplicateIdsToDelete.includes(tx.id)) keptTransactions.push(tx);
+          continue;
+        }
+
+        const txTime = new Date(tx.transaction_date).getTime();
+        const normMerchant = (tx.source_or_merchant || '').toLowerCase().trim();
+        const isGeneric = genericMerchants.some(g => normMerchant.includes(g));
+
+        let isDuplicate = false;
+        for (const kept of keptTransactions) {
+          if (kept.kind !== 'outgoing') continue;
+          if (Math.abs(Number(kept.amount) - Number(tx.amount)) > 0.001) continue;
+
+          const keptTime = new Date(kept.transaction_date).getTime();
+          if (Math.abs(txTime - keptTime) <= 3 * 60 * 1000) {
+            const normKept = (kept.source_or_merchant || '').toLowerCase().trim();
+            const isKeptGeneric = genericMerchants.some(g => normKept.includes(g));
+            const isSubstring = (normKept.length > 3 && normMerchant.includes(normKept)) ||
+                                (normMerchant.length > 3 && normKept.includes(normMerchant));
+
+            if (normKept === normMerchant || isSubstring || isGeneric || isKeptGeneric) {
+              // Found a companion duplicate! Keep the more specific merchant name
+              if (isKeptGeneric && !isGeneric) {
+                kept.source_or_merchant = tx.source_or_merchant;
+                supabase.from('transactions').update({ source_or_merchant: tx.source_or_merchant }).eq('id', kept.id).then();
+              }
+              duplicateIdsToDelete.push(tx.id);
+              isDuplicate = true;
+              break;
+            }
+          }
+        }
+
+        if (!isDuplicate) {
+          keptTransactions.push(tx);
+        }
+      }
+
+      if (duplicateIdsToDelete.length > 0) {
+        console.log(`[Dashboard] Auto-cleaning ${duplicateIdsToDelete.length} companion duplicate transactions:`, duplicateIdsToDelete);
+        await supabase.from('transactions').delete().in('id', duplicateIdsToDelete).eq('user_id', user.id);
+        allTransactions = keptTransactions;
+      }
+    }
 
     // 4. Calculate Current Active Cycle Debt & Credit Card Rollover
     // We compute this from the real current active cycle (offset = 0)

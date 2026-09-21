@@ -160,8 +160,8 @@ export async function POST(req) {
     inFlightLocks.add(dedupFingerprint);
 
     try {
-      // Reject Promotional, Carrier Airtime/Call Tone, Balance Inquiry, and OTP SMS
-      const isPromo = /عرض خاص|اشحن|احصل على|خصم يصل|لفترة محدودة|كود الخصم|مبروك|وفر مع|استمتع بـ|استمتع بخصم|اشترك الآن|اشترك الان|شحنتك|كول تون|رنة المتصل|رنتلي|تجديد رنة|رصيدك الحالي|رصيدك المتاح|متبقي من باقتك|رصيد محفظتك|كود التأكيد|رمز التحقق|رمز الأمان|لا تشارك|استبدل نقاطك|صندوق الهدايا|كاش باك|على النوتة|سلفة|فليكسات|فليكس 80|فليكس 70|فليكس 100|فليكس 200|promo|offer|discount up to|special offer|recharge now|win up to|subscribe now|voucher code|coupon|get free|valid until|call tone|current.*balance|balance is|available balance|otp[:\s]|verification code|one-time password|reward points/i.test(body);
+      // Reject Promotional, Carrier Airtime/Call Tone, Balance Inquiry, OTP SMS, and Carrier Bill Payment Receipts
+      const isPromo = /عرض خاص|اشحن|احصل على|خصم يصل|لفترة محدودة|كود الخصم|مبروك|وفر مع|استمتع بـ|استمتع بخصم|اشترك الآن|اشترك الان|شحنتك|كول تون|رنة المتصل|رنتلي|تجديد رنة|رصيدك الحالي|رصيدك المتاح|متبقي من باقتك|رصيد محفظتك|كود التأكيد|رمز التحقق|رمز الأمان|لا تشارك|استبدل نقاطك|صندوق الهدايا|كاش باك|على النوتة|سلفة|فليكسات|فليكس 80|فليكس 70|فليكس 100|فليكس 200|AutoBill\s*:|في حسابك بنجاح.*(?:اورنچ|فودافون|اتصالات|وي|تقدر تدفع|كارت البنك)|تأكيد سداد الفاتورة|promo|offer|discount up to|special offer|recharge now|win up to|subscribe now|voucher code|coupon|get free|valid until|call tone|current.*balance|balance is|available balance|otp[:\s]|verification code|one-time password|reward points/i.test(body);
       if (isPromo) {
         return new NextResponse('Ignored: Promotional/Carrier message detected', { status: 200 });
       }
@@ -565,27 +565,54 @@ async function insertOutgoing(amount, sourceOrMerchant, note, time, userId, cate
     }
   }
 
-  // 2. Short amount/source/time window fallback check
+  // 2. Smart companion receipt & multi-notification correlation (3-minute window)
   const txTimeMs = new Date(time).getTime();
-  const win = 5 * 60 * 1000;
+  const win = 3 * 60 * 1000;
   const minDate = new Date(txTimeMs - win).toISOString();
   const maxDate = new Date(txTimeMs + win).toISOString();
 
   let query = supabase
     .from('transactions')
-    .select('id, amount, transaction_date')
+    .select('id, amount, source_or_merchant, note, transaction_date')
     .eq('kind', 'outgoing')
     .eq('amount', Number(amount))
-    .eq('source_or_merchant', sourceOrMerchant)
     .gte('transaction_date', minDate)
     .lte('transaction_date', maxDate);
 
   if (userId) query = query.eq('user_id', userId);
-  const { data: existingDups } = await query.limit(1);
+  const { data: candidateTxs } = await query;
 
-  if (existingDups && existingDups.length > 0) {
-    console.log(`[Webhook] Duplicate outgoing ignored: ${amount} EGP on ${time}`);
-    return new NextResponse('Duplicate ignored', { status: 200 });
+  if (candidateTxs && candidateTxs.length > 0) {
+    const genericMerchants = ['wallet payment', 'bank card', 'bank transaction', 'mobile wallet', 'bank notification', 'pos purchase', 'purchase'];
+    const normNew = (sourceOrMerchant || '').toLowerCase().trim();
+
+    for (const cand of candidateTxs) {
+      const normOld = (cand.source_or_merchant || '').toLowerCase().trim();
+
+      const isExactMatch = normOld === normNew;
+      const isSubstringMatch = (normOld.length > 3 && normNew.includes(normOld)) ||
+                               (normNew.length > 3 && normOld.includes(normNew));
+      const isGenericOld = genericMerchants.some(g => normOld.includes(g));
+      const isGenericNew = genericMerchants.some(g => normNew.includes(g));
+
+      if (isExactMatch || isSubstringMatch || isGenericOld || isGenericNew) {
+        console.log(`[Webhook] Duplicate companion outgoing ignored: ${amount} EGP ('${sourceOrMerchant}' matched '${cand.source_or_merchant}')`);
+
+        // If the new merchant is more specific than a generic placeholder, upgrade the existing record!
+        if (isGenericOld && !isGenericNew) {
+          const upgradedNote = idempotencyKey 
+            ? `${cand.note || ''} | companion:idempotency:${idempotencyKey}`.trim()
+            : cand.note;
+          await supabase
+            .from('transactions')
+            .update({ source_or_merchant: sourceOrMerchant, note: upgradedNote })
+            .eq('id', cand.id);
+          console.log(`[Webhook] Upgraded existing transaction ${cand.id} merchant to '${sourceOrMerchant}'`);
+        }
+
+        return new NextResponse('Duplicate companion ignored', { status: 200 });
+      }
+    }
   }
 
   const fullNote = idempotencyKey

@@ -70,6 +70,7 @@ public class BankParser {
             "كول تون|رنة المتصل|رنتلي|تجديد رنة|رصيدك الحالي|رصيدك المتاح|متبقي من باقتك|رصيد محفظتك|" +
             "كود التأكيد|رمز التحقق|رمز الأمان|لا تشارك|استبدل نقاطك|صندوق الهدايا|كاش باك|" +
             "على النوتة|سلفة|فليكسات|فليكس 80|فليكس 70|فليكس 100|فليكس 200|" +
+            "AutoBill\\s*:|في حسابك بنجاح.*(?:اورنچ|فودافون|اتصالات|وي|تقدر تدفع|كارت البنك)|تأكيد سداد الفاتورة|" +
             "promo|offer|discount up to|special offer|recharge now|win up to|subscribe now|voucher code|coupon|get free|valid until|" +
             "call tone|current.*balance|balance is|available balance|otp[:\\s]|verification code|one-time password|reward points",
             Pattern.CASE_INSENSITIVE
