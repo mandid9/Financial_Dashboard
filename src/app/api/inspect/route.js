@@ -13,25 +13,24 @@ export async function GET(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: tokens } = await supabase
-      .from('user_webhook_tokens')
-      .select('*');
-
-    // Also get distinct user_ids from transactions
-    const { data: txUsers } = await supabase
+    // Check recent transactions for both users
+    const { data: txsA } = await supabase
       .from('transactions')
-      .select('user_id')
+      .select('id, amount, source_or_merchant, kind, transaction_date, is_carried_forward')
+      .eq('user_id', '5aa42527-12fc-448a-a108-70531f3c5607')
       .order('transaction_date', { ascending: false })
-      .limit(100);
+      .limit(5);
 
-    const userCounts = {};
-    (txUsers || []).forEach(t => {
-      userCounts[t.user_id] = (userCounts[t.user_id] || 0) + 1;
-    });
+    const { data: txsB } = await supabase
+      .from('transactions')
+      .select('id, amount, source_or_merchant, kind, transaction_date, is_carried_forward')
+      .eq('user_id', '2463bf7f-f454-454f-b8bc-b8328f85069b')
+      .order('transaction_date', { ascending: false })
+      .limit(5);
 
     return NextResponse.json({
-      tokens,
-      userCounts
+      userA_5aa: txsA,
+      userB_246: txsB
     });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
