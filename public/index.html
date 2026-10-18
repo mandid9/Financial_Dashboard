@@ -2743,16 +2743,31 @@ function renderHistory() {
   document.querySelectorAll('.carry-checkbox').forEach(cb => {
     const row = String(cb.dataset.row);
     const kind = cb.dataset.kind;
-    if (state.carryItems.some(i => String(i.row) === row && i.kind === kind)) {
+    const isCurrentlyCarried = (state.carryItems && state.carryItems.some(i => String(i.row) === row && i.kind === kind)) ||
+      (state.dashboard && [...(state.dashboard.outgoing || []), ...(state.dashboard.incoming || [])].some(i => String(i.row) === row && i.is_carried_forward));
+    if (isCurrentlyCarried) {
       cb.checked = true;
     }
-    cb.addEventListener('change', (e) => {
-      if (e.target.checked) {
-        state.carryItems.push({row, kind});
+    cb.addEventListener('change', async (e) => {
+      const willCarry = e.target.checked;
+      if (willCarry) {
+        if (!state.carryItems.some(i => String(i.row) === row)) state.carryItems.push({row, kind});
       } else {
         state.carryItems = state.carryItems.filter(i => !(String(i.row) === row && i.kind === kind));
       }
       sessionStorage.setItem('carryItems', JSON.stringify(state.carryItems));
+      state.cycleCache = {};
+      renderAll();
+
+      try {
+        await server('toggleCarryForward', [row, willCarry]);
+        state.cycleCache = {};
+        loadData(true);
+        toast(willCarry ? '📌 Deferred to next cycle' : 'Kept in cycle', 'info');
+      } catch(err) {
+        console.error('Carry checkbox error:', err);
+        toast('Failed to save carry-forward status', 'error');
+      }
     });
   });
 
