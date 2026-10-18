@@ -13,24 +13,19 @@ export async function GET(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check recent transactions for both users
-    const { data: txsA } = await supabase
-      .from('transactions')
-      .select('id, amount, source_or_merchant, kind, transaction_date, is_carried_forward')
-      .eq('user_id', '5aa42527-12fc-448a-a108-70531f3c5607')
-      .order('transaction_date', { ascending: false })
-      .limit(5);
+    const testId = searchParams.get('test_id') || 'cc8b850b-f984-4d64-8231-fff14e554b9a';
+    const setCarry = searchParams.get('carry') === 'true';
 
-    const { data: txsB } = await supabase
+    // Test update exactly like action/route.js does
+    const { data, error } = await supabase
       .from('transactions')
-      .select('id, amount, source_or_merchant, kind, transaction_date, is_carried_forward')
-      .eq('user_id', '2463bf7f-f454-454f-b8bc-b8328f85069b')
-      .order('transaction_date', { ascending: false })
-      .limit(5);
+      .update({ is_carried_forward: setCarry })
+      .eq('id', testId)
+      .select();
 
     return NextResponse.json({
-      userA_5aa: txsA,
-      userB_246: txsB
+      updated: data,
+      error: error ? error.message : null
     });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
