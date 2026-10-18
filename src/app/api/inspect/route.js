@@ -13,15 +13,20 @@ export async function GET(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: recentTxs, error: txErr } = await supabase
+    const { data: usersData, error: uErr } = await supabase.auth.admin.listUsers();
+    const users = (usersData?.users || []).map(u => ({ id: u.id, email: u.email }));
+
+    // Get the salary transaction
+    const { data: salaryTx } = await supabase
       .from('transactions')
-      .select('id, user_id, kind, amount, source_or_merchant, note, transaction_date, is_carried_forward, category_id')
-      .order('transaction_date', { ascending: false })
-      .limit(20);
+      .select('*')
+      .eq('id', 'cc8b850b-f984-4d64-8231-fff14e554b9a')
+      .maybeSingle();
 
     return NextResponse.json({
-      recentTxs,
-      txErr: txErr ? txErr.message : null
+      users,
+      uErr: uErr ? uErr.message : null,
+      salaryTx
     });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
