@@ -33,6 +33,7 @@ export async function GET(req) {
 
     const ownerEmail = process.env.OWNER_EMAIL || process.env.PRIMARY_OWNER_EMAIL || '';
     const isOwner = Boolean(ownerEmail && user.email && user.email.toLowerCase() === ownerEmail.toLowerCase());
+    const ownerAliases = (process.env.OWNER_ALIASES || '').split(',').map(s => s.trim()).filter(Boolean);
 
     // Ensure user has a persistent webhook token
     let userWebhookToken = null;
@@ -97,7 +98,9 @@ export async function GET(req) {
       .order('sort_order', { ascending: true });
 
     if (isOwner) {
-      catQuery = catQuery.or(`user_id.eq.${user.id},user_id.in.(${ownerAliases.join(',')}),user_id.is.null`);
+      const ownerConds = [`user_id.eq.${user.id}`, 'user_id.is.null'];
+      if (ownerAliases.length > 0) ownerConds.push(`user_id.in.(${ownerAliases.join(',')})`);
+      catQuery = catQuery.or(ownerConds.join(','));
     } else {
       catQuery = catQuery.eq('user_id', user.id);
     }
@@ -137,7 +140,9 @@ export async function GET(req) {
       .order('transaction_date', { ascending: false });
 
     if (isOwner) {
-      txQuery = txQuery.or(`user_id.eq.${user.id},user_id.in.(${ownerAliases.join(',')}),user_id.is.null`);
+      const ownerConds = [`user_id.eq.${user.id}`, 'user_id.is.null'];
+      if (ownerAliases.length > 0) ownerConds.push(`user_id.in.(${ownerAliases.join(',')})`);
+      txQuery = txQuery.or(ownerConds.join(','));
     } else {
       txQuery = txQuery.eq('user_id', user.id);
     }
@@ -464,7 +469,7 @@ export async function GET(req) {
       });
     }
 
-    const carriedTransactions = carriedOutTransactions;
+    const carriedTransactions = isNext ? carriedInTransactions : carriedOutTransactions;
 
     const allFormattedHistoryItems = (allTransactions || []).map(t => {
       const catName = (t.category_id && catMap[t.category_id])

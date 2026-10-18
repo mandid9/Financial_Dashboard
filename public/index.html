@@ -635,6 +635,8 @@
     .tx-card .meta { display: flex; justify-content: space-between; align-items: center; }
     .tx-card.reversed .amount { text-decoration: line-through; color: var(--text-muted); }
     .tx-card.incoming .amount { color: var(--success); }
+    .tx-card.deferred { opacity: 0.82; border-left: 3px solid #eab308; }
+    .tx-card.carried-in { border-left: 3px solid #3b82f6; }
 
     .filter-pills { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 16px; }
     .filter-pills::-webkit-scrollbar { display: none; }
@@ -1779,6 +1781,11 @@ function server(fnName, args = [], onSuccess = null, loadingMsg = null) {
     if (fnName === 'getDashboardData') finalRes = res.dashboard;
     if (fnName === 'getBudgetSettings') finalRes = res.budget;
 
+    // Any mutation on the server invalidates multi-cycle cached metrics
+    if (fnName !== 'getDashboardData' && fnName !== 'getBudgetSettings') {
+      state.cycleCache = {};
+    }
+
     if (onSuccess) onSuccess(finalRes);
     return finalRes;
   })
@@ -2142,7 +2149,10 @@ function renderHome() {
   const listEl = document.getElementById('home-uncategorized-list');
 
   if (c.isNext) {
-    const carriedAll = state.dashboard.carriedTransactions || [];
+    const cb = state.dashboard.carriedBreakdown || {};
+    const carriedInList = Array.isArray(cb.carriedIn) ? cb.carriedIn : [];
+    const carriedFallback = Array.isArray(state.dashboard.carriedTransactions) ? state.dashboard.carriedTransactions : [];
+    const carriedAll = carriedInList.length > 0 ? carriedInList : carriedFallback;
     
     headerEl.innerHTML = `📌 Carried Items for Next Cycle <span class="badge blue">${carriedAll.length}</span>`;
     if (carriedAll.length === 0) {
@@ -2603,15 +2613,20 @@ function renderHistory() {
     outList = outList.filter(t => parseDateStr(t.timestamp || t.date) >= startOfWeek);
     incList = incList.filter(t => parseDateStr(t.timestamp || t.date) >= startOfWeek);
   } else if (state.historyFilter === 'month') {
-    let cm = now.getMonth();
-    let cy = now.getFullYear();
-    if (now.getDate() < 20) {
-      cm -= 1;
-      if (cm < 0) { cm = 11; cy -= 1; }
+    let cycleStart;
+    if (state.cycle && state.cycle.startDate) {
+      cycleStart = new Date(state.cycle.startDate);
+    } else {
+      let cm = now.getMonth();
+      let cy = now.getFullYear();
+      if (now.getDate() < 20) {
+        cm -= 1;
+        if (cm < 0) { cm = 11; cy -= 1; }
+      }
+      cycleStart = new Date(cy, cm, 20);
     }
-    const startOfMonth = new Date(cy, cm, 20);
-    outList = outList.filter(t => t.carried_from_prev || parseDateStr(t.timestamp || t.date) >= startOfMonth);
-    incList = incList.filter(t => t.carried_from_prev || parseDateStr(t.timestamp || t.date) >= startOfMonth);
+    outList = outList.filter(t => t.carried_from_prev || parseDateStr(t.timestamp || t.date) >= cycleStart);
+    incList = incList.filter(t => t.carried_from_prev || parseDateStr(t.timestamp || t.date) >= cycleStart);
   }
   
   const q = (state.historySearch || '').toLowerCase().trim();
@@ -2976,7 +2991,7 @@ function generateTxCardHtml(t, context, showCheckbox = false) {
   const pinHtml = `<button class="carry-pin ${pinClass}" title="${pinTitle}" onclick="promptCarryPin(event, ${rowQ}, '${t.kind}', '${pinSourceEscaped}', ${Number(t.amount) || 0}, ${isCarriedIn}, '${esc(txRawTime)}')">${pinIcon}</button>`;
 
   return `
-    <div class="card tx-card ${isRev ? 'reversed' : ''} ${t.kind}" onclick="toggleExpand('${cid}')" style="padding: 12px; margin-bottom: 8px">
+    <div class="card tx-card ${isRev ? 'reversed' : ''} ${isCarriedToNext ? 'deferred' : ''} ${isCarriedIn ? 'carried-in' : ''} ${t.kind}" onclick="toggleExpand('${cid}')" style="padding: 12px; margin-bottom: 8px">
       <div style="display:flex; gap:12px; align-items:center">
         ${checkboxHtml}
         <div style="font-size:20px; background:var(--surface-hover); width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:12px; flex-shrink:0">${emoji}</div>
@@ -3093,11 +3108,13 @@ async function confirmCarryPinAction() {
     state.carryItems = state.carryItems.filter(i => !(String(i.row) === String(row) && i.kind === kind));
     toast('Kept in cycle', 'info');
   }
+  state.cycleCache = {};
   sessionStorage.setItem('carryItems', JSON.stringify(state.carryItems));
   renderAll();
 
   try {
     await server('toggleCarryForward', [row, willCarry]);
+    state.cycleCache = {};
     loadData(true);
   } catch(err) {
     if (willCarry) {
