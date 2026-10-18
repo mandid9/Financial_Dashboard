@@ -13,20 +13,25 @@ export async function GET(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: usersData, error: uErr } = await supabase.auth.admin.listUsers();
-    const users = (usersData?.users || []).map(u => ({ id: u.id, email: u.email }));
+    const { data: tokens } = await supabase
+      .from('user_webhook_tokens')
+      .select('*');
 
-    // Get the salary transaction
-    const { data: salaryTx } = await supabase
+    // Also get distinct user_ids from transactions
+    const { data: txUsers } = await supabase
       .from('transactions')
-      .select('*')
-      .eq('id', 'cc8b850b-f984-4d64-8231-fff14e554b9a')
-      .maybeSingle();
+      .select('user_id')
+      .order('transaction_date', { ascending: false })
+      .limit(100);
+
+    const userCounts = {};
+    (txUsers || []).forEach(t => {
+      userCounts[t.user_id] = (userCounts[t.user_id] || 0) + 1;
+    });
 
     return NextResponse.json({
-      users,
-      uErr: uErr ? uErr.message : null,
-      salaryTx
+      tokens,
+      userCounts
     });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
